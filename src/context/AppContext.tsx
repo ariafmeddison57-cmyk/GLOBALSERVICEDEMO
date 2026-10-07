@@ -1,0 +1,639 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import confetti from 'canvas-confetti';
+import {
+  BrandId,
+  BranchId,
+  PosUnitId,
+  UserRole,
+  PosUnit,
+  ViewMode,
+  Product,
+  CartItem,
+  Order,
+  InventoryItem,
+  PurchaseOrder,
+  StaffMember,
+  ExpenseRecord,
+  DamagedInventoryRecord,
+} from '../types';
+import {
+  BRANDS,
+  BRANCHES,
+  POS_UNITS,
+  INITIAL_ORDERS,
+  INVENTORY_ITEMS,
+  PURCHASE_ORDERS,
+  STAFF_MEMBERS,
+  INITIAL_EXPENSES,
+  INITIAL_DAMAGED_GOODS,
+  PRODUCTS,
+} from '../data/mockData';
+
+export interface RecipeDeductionNotice {
+  orderId: string;
+  items: { ingredientName: string; quantityDeducted: string; remainingStock: string }[];
+}
+
+interface AppContextType {
+  // Navigation & Filters
+  currentView: ViewMode;
+  setCurrentView: (view: ViewMode) => void;
+  selectedBrand: BrandId | 'all';
+  setSelectedBrand: (b: BrandId | 'all') => void;
+  selectedBranch: BranchId | 'all';
+  setSelectedBranch: (b: BranchId | 'all') => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebar: () => void;
+
+  // POS Unit Architecture & Role Login
+  userRole: UserRole;
+  setUserRole: (role: UserRole) => void;
+  currentPosUnitId: PosUnitId;
+  setCurrentPosUnitId: (id: PosUnitId) => void;
+  posUnits: PosUnit[];
+  currentPosUnit: PosUnit;
+  loginAsCashier: (unitId: PosUnitId) => void;
+  loginAsAdmin: () => void;
+
+  // Language & Theme
+  language: 'en' | 'ar';
+  setLanguage: (lang: 'en' | 'ar') => void;
+  isRTL: boolean;
+  t: (en: string, ar: string) => string;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+
+  // Sound & Audio feedback
+  soundEnabled: boolean;
+  setSoundEnabled: (val: boolean) => void;
+  playSound: (type: 'beep' | 'success' | 'bell' | 'bump') => void;
+
+  // POS & Cart
+  cart: CartItem[];
+  addToCart: (product: Product, modifiers?: string[], notes?: string) => void;
+  updateQuantity: (productId: string, delta: number) => void;
+  removeFromCart: (productId: string) => void;
+  clearCart: () => void;
+  cartSubtotal: number;
+  cartTax: number;
+  cartTotal: number;
+
+  // Orders
+  orders: Order[];
+  createOrder: (paymentMethod: 'cash' | 'card' | 'talabat' | 'snoonu', orderType: Order['orderType'], customerName?: string, tableNumber?: string) => Order;
+  lastRecipeDeduction: RecipeDeductionNotice | null;
+  clearLastRecipeDeduction: () => void;
+
+  // Inventory & Recipes
+  inventory: InventoryItem[];
+  updateInventoryStock: (itemId: string, newClosingStock: number) => void;
+  damagedGoods: DamagedInventoryRecord[];
+  logDamagedStock: (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => void;
+  totalDamagedLoss: number;
+
+  // Purchases & Expenses
+  purchases: PurchaseOrder[];
+  addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
+  expenses: ExpenseRecord[];
+  addExpense: (exp: Omit<ExpenseRecord, 'id'>) => void;
+  totalExpenses: number;
+
+  // Products & Menu
+  products: Product[];
+  addProduct: (prod: Omit<Product, 'id'>) => Product;
+  updateProduct: (id: string, updatedFields: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
+
+  // Staff
+  staff: StaffMember[];
+  addStaffMember: (member: Omit<StaffMember, 'id'>) => StaffMember;
+  updateStaffMember: (id: string, updatedFields: Partial<StaffMember>) => void;
+  updateStaffStatus: (staffId: string, status: StaffMember['status']) => void;
+
+  // Sales Tracking & Live POS metrics
+  totalTodaySales: number;
+  totalMonthlySales: number;
+  liveSessionSalesTotal: number;
+  liveSessionOrdersCount: number;
+  getBrandLiveMetrics: (brandId: BrandId) => { addedRevenue: number; addedOrdersCount: number };
+
+  // Utilities
+  activeCashier: string;
+  formatCurrency: (amount: number) => string;
+  lastCreatedOrder: Order | null;
+  setLastCreatedOrder: (order: Order | null) => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [currentView, setCurrentViewInternal] = useState<ViewMode>('dashboard');
+  const [selectedBrand, setSelectedBrand] = useState<BrandId | 'all'>('all');
+  const [selectedBranch, setSelectedBranch] = useState<BranchId | 'all'>('west-walk');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+
+  const toggleSidebar = () => {
+    playSound('beep');
+    setIsSidebarCollapsed((prev) => !prev);
+  };
+
+  // Multi-POS Login state: 'admin' sees all modules & all POS; 'cashier' sees ONLY their unit's POS
+  const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [currentPosUnitId, setCurrentPosUnitId] = useState<PosUnitId>('coffee-shop');
+
+  const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+
+  // Data states
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const [inventory, setInventory] = useState<InventoryItem[]>(INVENTORY_ITEMS);
+  const [purchases, setPurchases] = useState<PurchaseOrder[]>(PURCHASE_ORDERS);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
+  const [damagedGoods, setDamagedGoods] = useState<DamagedInventoryRecord[]>(INITIAL_DAMAGED_GOODS);
+  const [staff, setStaff] = useState<StaffMember[]>(STAFF_MEMBERS);
+  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  const [lastCreatedOrder, setLastCreatedOrder] = useState<Order | null>(null);
+  const [lastRecipeDeduction, setLastRecipeDeduction] = useState<RecipeDeductionNotice | null>(null);
+
+  const currentPosUnit = POS_UNITS.find((u) => u.id === currentPosUnitId) || POS_UNITS[0];
+  const activeCashier = userRole === 'admin' ? 'Master Admin (HQ Group)' : currentPosUnit.operatorName;
+  const isRTL = language === 'ar';
+
+  // Role switching
+  const loginAsCashier = (unitId: PosUnitId) => {
+    playSound('beep');
+    setUserRole('cashier');
+    setCurrentPosUnitId(unitId);
+    setCurrentViewInternal('pos');
+    setCart([]);
+  };
+
+  const loginAsAdmin = () => {
+    playSound('success');
+    setUserRole('admin');
+    setCurrentViewInternal('dashboard');
+  };
+
+  const setCurrentView = (view: ViewMode) => {
+    // If logged in as cashier, lock navigation to 'pos' only
+    if (userRole === 'cashier' && view !== 'pos') {
+      playSound('bump');
+      return;
+    }
+    setCurrentViewInternal(view);
+  };
+
+  // Sync theme & RTL with DOM
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.style.colorScheme = 'dark';
+    } else {
+      root.classList.remove('dark');
+      root.style.colorScheme = 'light';
+    }
+
+    root.setAttribute('dir', isRTL ? 'rtl' : 'ltr');
+    root.setAttribute('lang', language);
+  }, [theme, isRTL, language]);
+
+  const toggleTheme = () => {
+    playSound('beep');
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  const t = (en: string, ar: string) => (language === 'ar' ? ar : en);
+
+  // Web Audio Synthesizer
+  const playSound = (type: 'beep' | 'success' | 'bell' | 'bump') => {
+    if (!soundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === 'beep') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.08);
+      } else if (type === 'success') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08); // E5
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16); // G5
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      } else if (type === 'bell') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+      } else if (type === 'bump') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.setValueAtTime(660, ctx.currentTime + 0.05);
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      }
+    } catch {
+      // AudioContext policy
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    const formatted = new Intl.NumberFormat('en-QA', {
+      maximumFractionDigits: 0,
+    }).format(amount);
+    return language === 'ar' ? `${formatted} ر.ق` : `QAR ${formatted}`;
+  };
+
+  // Cart operations
+  const addToCart = (product: Product, modifiers: string[] = [], notes?: string) => {
+    playSound('beep');
+    setCart((prev) => {
+      const existingIndex = prev.findIndex(
+        (item) => item.product.id === product.id && JSON.stringify(item.selectedModifiers) === JSON.stringify(modifiers)
+      );
+      if (existingIndex > -1) {
+        const next = [...prev];
+        next[existingIndex].quantity += 1;
+        return next;
+      }
+      return [...prev, { product, quantity: 1, selectedModifiers: modifiers, notes }];
+    });
+  };
+
+  const updateQuantity = (productId: string, delta: number) => {
+    playSound('beep');
+    setCart((prev) => {
+      return prev
+        .map((item) => {
+          if (item.product.id === productId) {
+            const nextQty = item.quantity + delta;
+            return nextQty > 0 ? { ...item, quantity: nextQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as CartItem[];
+    });
+  };
+
+  const removeFromCart = (productId: string) => {
+    playSound('bump');
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const cartTax = 0; // Standard 0% in Qatar for general F&B
+  const cartTotal = cartSubtotal + cartTax;
+
+  // Create order with AUTOMATIC RECIPE STOCK DEPLETION
+  const createOrder = (
+    paymentMethod: 'cash' | 'card' | 'talabat' | 'snoonu',
+    orderType: Order['orderType'] = 'dine-in',
+    customerName: string = 'Walk-in Guest',
+    tableNumber?: string
+  ): Order => {
+    const nextOrderNum = (1000 + orders.length + 1).toString();
+    const effectiveBrand = cart[0]?.product.brandId || currentPosUnit.brandId;
+    const effectiveBranch = selectedBranch === 'all' ? 'west-walk' : selectedBranch;
+
+    // 1. Calculate Recipe Ingredient Depletions across all items in cart
+    const recipeDeductionsMap = new Map<string, { name: string; totalQty: number; unit: string }>();
+    const deductionLogs: { ingredientName: string; quantityDeducted: string; remainingStock: string }[] = [];
+
+    cart.forEach((cartItem) => {
+      const recipe = cartItem.product.recipe;
+      if (recipe && recipe.ingredients) {
+        recipe.ingredients.forEach((ing) => {
+          const usedAmt = ing.portionQty * cartItem.quantity;
+          const current = recipeDeductionsMap.get(ing.inventoryItemId) || { name: ing.name, totalQty: 0, unit: ing.unit };
+          current.totalQty += usedAmt;
+          recipeDeductionsMap.set(ing.inventoryItemId, current);
+        });
+      }
+    });
+
+    // 2. Deplete Inventory in real-time
+    if (recipeDeductionsMap.size > 0) {
+      setInventory((prevInv) =>
+        prevInv.map((invItem) => {
+          const deduction = recipeDeductionsMap.get(invItem.id);
+          if (deduction) {
+            const newUsed = parseFloat((invItem.used + deduction.totalQty).toFixed(3));
+            const newClosing = Math.max(0, parseFloat((invItem.closingStock - deduction.totalQty).toFixed(3)));
+
+            deductionLogs.push({
+              ingredientName: invItem.name,
+              quantityDeducted: `-${deduction.totalQty} ${deduction.unit}`,
+              remainingStock: `${newClosing} ${invItem.unit}`,
+            });
+
+            return {
+              ...invItem,
+              used: newUsed,
+              closingStock: newClosing,
+            };
+          }
+          return invItem;
+        })
+      );
+
+      setLastRecipeDeduction({
+        orderId: nextOrderNum,
+        items: deductionLogs,
+      });
+    }
+
+    const deductedSummary = Array.from(recipeDeductionsMap.values()).map(
+      (d) => `${d.name}: -${d.totalQty.toFixed(2)} ${d.unit}`
+    );
+
+    const newOrder: Order = {
+      id: nextOrderNum,
+      brandId: effectiveBrand,
+      branchId: effectiveBranch,
+      posUnitId: currentPosUnitId,
+      orderType,
+      items: [...cart],
+      subtotal: cartSubtotal,
+      tax: cartTax,
+      discount: 0,
+      total: cartTotal,
+      paymentMethod,
+      paymentStatus: 'paid',
+      status: 'Completed',
+      createdAt: new Date(),
+      cashierName: activeCashier,
+      customerName,
+      tableNumber: tableNumber || (orderType === 'dine-in' ? 'Table 08' : undefined),
+      deductedIngredientsSummary: deductedSummary,
+    };
+
+    setOrders((prev) => [newOrder, ...prev]);
+    setCart([]);
+    setLastCreatedOrder(newOrder);
+
+    // Audio chime & confetti
+    playSound('success');
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.7 },
+        colors: ['#0D9488', '#14B8A6', '#F97316', '#A855F7'],
+      });
+    } catch {
+      // ignore
+    }
+
+    return newOrder;
+  };
+
+  const clearLastRecipeDeduction = () => {
+    setLastRecipeDeduction(null);
+  };
+
+  // Inventory operations
+  const updateInventoryStock = (itemId: string, newClosingStock: number) => {
+    playSound('beep');
+    setInventory((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, closingStock: newClosingStock } : item))
+    );
+  };
+
+  const logDamagedStock = (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => {
+    playSound('bump');
+    const newRecord: DamagedInventoryRecord = {
+      ...record,
+      id: `DMG-${200 + damagedGoods.length + 1}`,
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    };
+    // 1. Immediately reduce closing stock of this item in the inventory ledger
+    setInventory((prev) =>
+      prev.map((item) => {
+        if (item.id === record.inventoryItemId) {
+          const newClosing = Math.max(0, parseFloat((item.closingStock - record.quantity).toFixed(2)));
+          return {
+            ...item,
+            closingStock: newClosing,
+          };
+        }
+        return item;
+      })
+    );
+    // 2. Append to damaged goods ledger (financial loss write-off)
+    setDamagedGoods((prev) => [newRecord, ...prev]);
+  };
+
+  const totalDamagedLoss = damagedGoods.reduce((sum, d) => sum + d.totalFinancialLoss, 0);
+
+  // Purchases operations
+  const addPurchaseOrder = (poData: Omit<PurchaseOrder, 'id'>) => {
+    playSound('success');
+    const newPo: PurchaseOrder = {
+      ...poData,
+      id: `PO-${9200 + purchases.length + 1}`,
+    };
+    setPurchases((prev) => [newPo, ...prev]);
+  };
+
+  // Operating Expenses operations (non-stock purchases: Kahramaa, rent, maintenance, marketing, supplies)
+  const addExpense = (expData: Omit<ExpenseRecord, 'id'>) => {
+    playSound('success');
+    const newExp: ExpenseRecord = {
+      ...expData,
+      id: `EXP-${100 + expenses.length + 1}`,
+    };
+    setExpenses((prev) => [newExp, ...prev]);
+  };
+
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Staff operations
+  const addStaffMember = (memberData: Omit<StaffMember, 'id'>): StaffMember => {
+    playSound('success');
+    const newMember: StaffMember = {
+      ...memberData,
+      id: `emp-${Date.now()}`,
+    };
+    setStaff((prev) => [newMember, ...prev]);
+    return newMember;
+  };
+
+  const updateStaffMember = (id: string, updatedFields: Partial<StaffMember>) => {
+    playSound('beep');
+    setStaff((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...updatedFields } : s))
+    );
+  };
+
+  const updateStaffStatus = (staffId: string, status: StaffMember['status']) => {
+    playSound('beep');
+    setStaff((prev) => prev.map((s) => (s.id === staffId ? { ...s, status } : s)));
+  };
+
+  // Products & Menu Recipe Operations
+  const addProduct = (prodData: Omit<Product, 'id'>): Product => {
+    playSound('success');
+    const newProd: Product = {
+      ...prodData,
+      id: `prod-${Date.now()}`,
+    };
+    setProducts((prev) => [newProd, ...prev]);
+    return newProd;
+  };
+
+  const updateProduct = (id: string, updatedFields: Partial<Product>) => {
+    playSound('beep');
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          const updated = { ...p, ...updatedFields };
+          // If recipe ingredients changed, recalculate cost & gross margin
+          if (updated.recipe && updated.recipe.ingredients) {
+            const foodCost = updated.recipe.ingredients.reduce(
+              (sum, ing) => sum + (ing.costPerPortion || 0),
+              0
+            );
+            const margin = updated.price > 0
+              ? Math.max(0, Math.round(((updated.price - foodCost) / updated.price) * 100))
+              : 0;
+            updated.cost = parseFloat(foodCost.toFixed(2));
+            updated.recipe.totalFoodCost = updated.cost;
+            updated.recipe.grossMarginPercent = margin;
+          }
+          return updated;
+        }
+        return p;
+      })
+    );
+  };
+
+  const deleteProduct = (id: string) => {
+    playSound('bump');
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // Real-time sales calculations from POS activity
+  const BASELINE_TODAY_SALES = 28450;
+  const BASELINE_MONTHLY_SALES = 514650;
+
+  const initialOrderIds = new Set(INITIAL_ORDERS.map((o) => o.id));
+  const newOrdersPlaced = orders.filter((o) => !initialOrderIds.has(o.id));
+  const liveSessionSalesTotal = newOrdersPlaced.reduce((sum, o) => sum + o.total, 0);
+  const liveSessionOrdersCount = newOrdersPlaced.length;
+
+  const totalTodaySales = BASELINE_TODAY_SALES + liveSessionSalesTotal;
+  const totalMonthlySales = BASELINE_MONTHLY_SALES + liveSessionSalesTotal;
+
+  const getBrandLiveMetrics = (brandId: BrandId) => {
+    const brandNewOrders = newOrdersPlaced.filter((o) => o.brandId === brandId);
+    const addedRevenue = brandNewOrders.reduce((sum, o) => sum + o.total, 0);
+    const addedOrdersCount = brandNewOrders.length;
+    return { addedRevenue, addedOrdersCount };
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        currentView,
+        setCurrentView,
+        selectedBrand,
+        setSelectedBrand,
+        selectedBranch,
+        setSelectedBranch,
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        toggleSidebar,
+        userRole,
+        setUserRole,
+        currentPosUnitId,
+        setCurrentPosUnitId,
+        posUnits: POS_UNITS,
+        currentPosUnit,
+        loginAsCashier,
+        loginAsAdmin,
+        language,
+        setLanguage,
+        isRTL,
+        t,
+        theme,
+        toggleTheme,
+        soundEnabled,
+        setSoundEnabled,
+        playSound,
+        cart,
+        addToCart,
+        updateQuantity,
+        removeFromCart,
+        clearCart,
+        cartSubtotal,
+        cartTax,
+        cartTotal,
+        orders,
+        createOrder,
+        lastRecipeDeduction,
+        clearLastRecipeDeduction,
+        inventory,
+        updateInventoryStock,
+        damagedGoods,
+        logDamagedStock,
+        totalDamagedLoss,
+        purchases,
+        addPurchaseOrder,
+        expenses,
+        addExpense,
+        totalExpenses,
+        products,
+        addProduct,
+        updateProduct,
+        deleteProduct,
+        staff,
+        addStaffMember,
+        updateStaffMember,
+        updateStaffStatus,
+        totalTodaySales,
+        totalMonthlySales,
+        liveSessionSalesTotal,
+        liveSessionOrdersCount,
+        getBrandLiveMetrics,
+        activeCashier,
+        formatCurrency,
+        lastCreatedOrder,
+        setLastCreatedOrder,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};
