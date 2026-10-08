@@ -171,6 +171,23 @@ export const BRANCHES: Branch[] = [
 
 export const INVENTORY_ITEMS: InventoryItem[] = [
   {
+    id: 'inv-cream-pasteurized',
+    name: 'Baladna Whipping Cream 1L (Batch B-104)',
+    nameAr: 'كريمة خفق بلدنا ١ لتر (دفعة B-104)',
+    brandIds: ['kahwatee', 'kinda'],
+    category: 'Dairy & Fresh',
+    unit: 'L',
+    openingStock: 25,
+    purchased: 0,
+    used: 13,
+    closingStock: 12,
+    minReorderLevel: 8,
+    unitCost: 22,
+    location: 'west-walk',
+    expiryDate: '2026-10-04', // Expired 4 days ago!
+    supplier: 'Baladna Food Industries',
+  },
+  {
     id: 'inv-beans-ethiopia',
     name: 'Specialty Coffee Beans (Ethiopia Yirgacheffe)',
     nameAr: 'حبوب بن مختصة (إثيوبيا يرغاتشيفي)',

@@ -90,6 +90,8 @@ interface AppContextType {
   // Inventory & Recipes
   inventory: InventoryItem[];
   updateInventoryStock: (itemId: string, newClosingStock: number) => void;
+  updateInventoryItem: (itemId: string, updates: Partial<InventoryItem>) => void;
+  addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   damagedGoods: DamagedInventoryRecord[];
   logDamagedStock: (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => void;
   totalDamagedLoss: number;
@@ -97,6 +99,8 @@ interface AppContextType {
   // Purchases & Expenses
   purchases: PurchaseOrder[];
   addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
+  updatePurchaseOrderStatus: (id: string, status: PurchaseOrder['status'], notes?: string) => void;
+  updatePurchaseOrder: (id: string, updates: Partial<PurchaseOrder>) => void;
   expenses: ExpenseRecord[];
   addExpense: (exp: Omit<ExpenseRecord, 'id'>) => void;
   totalExpenses: number;
@@ -426,6 +430,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const updateInventoryItem = (itemId: string, updates: Partial<InventoryItem>) => {
+    playSound('bell');
+    setInventory((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, ...updates } : item))
+    );
+  };
+
+  const addInventoryItem = (itemData: Omit<InventoryItem, 'id'>) => {
+    playSound('success');
+    const newItem: InventoryItem = {
+      ...itemData,
+      id: `inv-${Date.now()}`,
+    };
+    setInventory((prev) => [newItem, ...prev]);
+  };
+
   const logDamagedStock = (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => {
     playSound('bump');
     const newRecord: DamagedInventoryRecord = {
@@ -460,6 +480,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: `PO-${9200 + purchases.length + 1}`,
     };
     setPurchases((prev) => [newPo, ...prev]);
+  };
+
+  const updatePurchaseOrderStatus = (id: string, status: PurchaseOrder['status'], notes?: string) => {
+    playSound(status === 'Rejected' ? 'bump' : 'bell');
+    setPurchases((prev) =>
+      prev.map((po) => {
+        if (po.id === id) {
+          const now = new Date().toISOString().split('T')[0];
+          return {
+            ...po,
+            status,
+            notes: notes !== undefined ? notes : po.notes,
+            ...(status === 'Ordered' || status === 'Delivered' || status === 'In Transit'
+              ? {
+                  approvedBy: po.approvedBy || 'Admin Manager',
+                  approvalDate: po.approvalDate || now,
+                }
+              : status === 'Rejected'
+              ? {
+                  approvedBy: 'Admin (Rejected)',
+                  approvalDate: now,
+                }
+              : {}),
+          };
+        }
+        return po;
+      })
+    );
+  };
+
+  const updatePurchaseOrder = (id: string, updates: Partial<PurchaseOrder>) => {
+    playSound('bell');
+    setPurchases((prev) =>
+      prev.map((po) => (po.id === id ? { ...po, ...updates } : po))
+    );
   };
 
   // Operating Expenses operations (non-stock purchases: Kahramaa, rent, maintenance, marketing, supplies)
@@ -603,11 +658,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         clearLastRecipeDeduction,
         inventory,
         updateInventoryStock,
+        updateInventoryItem,
+        addInventoryItem,
         damagedGoods,
         logDamagedStock,
         totalDamagedLoss,
         purchases,
         addPurchaseOrder,
+        updatePurchaseOrderStatus,
+        updatePurchaseOrder,
         expenses,
         addExpense,
         totalExpenses,

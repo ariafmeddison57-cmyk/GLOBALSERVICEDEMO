@@ -207,9 +207,12 @@ export interface PurchaseOrder {
   expectedDelivery: string;
   quantityTotal: number;
   amount: number; // QAR
-  status: 'Delivered' | 'In Transit' | 'Pending Approval' | 'Ordered';
+  status: 'Delivered' | 'In Transit' | 'Pending Approval' | 'Ordered' | 'Rejected';
   itemsSummary: string;
   branchDestination: BranchId;
+  approvedBy?: string;
+  approvalDate?: string;
+  notes?: string;
 }
 
 export interface StaffMember {
