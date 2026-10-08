@@ -99,7 +99,7 @@ export const Sidebar: React.FC = () => {
     },
     {
       id: 'purchases',
-      label: 'Vendor Purchases',
+      label: 'Purchaces',
       labelAr: 'المشتريات والتوريد',
       icon: Truck,
     },
@@ -152,16 +152,16 @@ export const Sidebar: React.FC = () => {
           <div className="flex items-center gap-3 min-w-0">
             <div
               onClick={() => setCurrentView('dashboard')}
-              className="w-10 h-10 rounded-2xl bg-slate-900 dark:bg-white flex items-center justify-center text-white dark:text-neutral-900 font-black text-lg shadow-sm cursor-pointer hover:opacity-90 shrink-0"
-              title="K-OS Restaurant Group ERP"
+              className="w-10 h-10 rounded-2xl bg-slate-900 dark:bg-white flex items-center justify-center text-white dark:text-neutral-900 font-black text-sm shadow-sm cursor-pointer hover:opacity-90 shrink-0 tracking-tighter"
+              title="GLOBALSERVICES Restaurant Group ERP"
             >
-              K
+              GS
             </div>
             {!isSidebarCollapsed && (
               <div className="min-w-0 animate-in fade-in duration-200">
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-neutral-100">
-                    K-OS
+                  <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-neutral-100 truncate">
+                    GLOBALSERVICES
                   </span>
                   <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300">
                     ERP

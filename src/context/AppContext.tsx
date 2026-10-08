@@ -45,6 +45,8 @@ interface AppContextType {
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
+  dateRange: string;
+  setDateRange: (range: string) => void;
 
   // POS Unit Architecture & Role Login
   userRole: UserRole;
@@ -132,6 +134,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [selectedBrand, setSelectedBrand] = useState<BrandId | 'all'>('all');
   const [selectedBranch, setSelectedBranch] = useState<BranchId | 'all'>('west-walk');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [dateRange, setDateRange] = useState<string>('Oct 1 - Oct 31, 2026');
 
   const toggleSidebar = () => {
     playSound('beep');
@@ -567,6 +570,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isSidebarCollapsed,
         setIsSidebarCollapsed,
         toggleSidebar,
+        dateRange,
+        setDateRange,
         userRole,
         setUserRole,
         currentPosUnitId,

@@ -12,6 +12,7 @@ import {
   Lock,
   Unlock,
   CheckCircle2,
+  Check,
   X,
   FileSpreadsheet,
   PanelLeftClose,
@@ -38,10 +39,12 @@ export const Header: React.FC = () => {
     isSidebarCollapsed,
     toggleSidebar,
     isRTL,
+    dateRange,
+    setDateRange,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateRange, setDateRange] = useState('Oct 1 - Oct 31, 2026');
+  const [isCalendarMenuOpen, setIsCalendarMenuOpen] = useState(false);
   const [isExportToastOpen, setIsExportToastOpen] = useState(false);
   const [isStationModalOpen, setIsStationModalOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -121,13 +124,59 @@ export const Header: React.FC = () => {
           <ChevronDown className="w-3 h-3 opacity-80" />
         </button>
 
-        {/* Date Range Dropdown Pill (Desktop) */}
+        {/* Date Range Dropdown Pill (Desktop & Tablet) */}
         {userRole === 'admin' && (
-          <div className="relative hidden lg:flex items-center">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-neutral-800/80 border border-slate-200 dark:border-neutral-700/80 text-xs text-slate-700 dark:text-neutral-300 font-medium">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+          <div className="relative">
+            <button
+              onClick={() => setIsCalendarMenuOpen(!isCalendarMenuOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-neutral-800/80 hover:bg-slate-100 dark:hover:bg-neutral-800 border border-slate-200 dark:border-neutral-700/80 text-xs text-slate-700 dark:text-neutral-300 font-medium transition-colors shadow-xs"
+              title={t('Change reporting period', 'تغيير الفترة الزمنية')}
+            >
+              <Calendar className="w-3.5 h-3.5 text-amber-500" />
               <span>{dateRange}</span>
-            </div>
+              <ChevronDown className="w-3 h-3 opacity-60" />
+            </button>
+
+            {isCalendarMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-2 py-1.5 border-b border-slate-100 dark:border-neutral-800 mb-1 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">
+                    {t('Reporting Date Range', 'الفترة الزمنية')}
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-bold">2026</span>
+                </div>
+
+                <div className="space-y-1">
+                  {[
+                    { id: 'today', label: t('Today (Real-time)', 'اليوم (مباشر)'), val: 'Today (Oct 8, 2026)' },
+                    { id: 'this-week', label: t('This Week', 'هذا الأسبوع'), val: 'Oct 4 - Oct 10, 2026' },
+                    { id: 'this-month', label: t('This Month (MTD)', 'هذا الشهر (MTD)'), val: 'Oct 1 - Oct 31, 2026' },
+                    { id: 'last-month', label: t('Last Month', 'الشهر الماضي'), val: 'Sep 1 - Sep 30, 2026' },
+                    { id: 'q3', label: t('Q3 2026', 'الربع الثالث ٢٠٢٦'), val: 'Jul 1 - Sep 30, 2026' },
+                    { id: 'ytd', label: t('Year to Date (YTD)', 'من بداية السنة (YTD)'), val: 'Jan 1 - Oct 31, 2026' },
+                  ].map((preset) => {
+                    const isSelected = dateRange === preset.val;
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => {
+                          setDateRange(preset.val);
+                          setIsCalendarMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                          isSelected
+                            ? 'bg-amber-500 text-neutral-950 font-bold'
+                            : 'text-slate-700 dark:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <span>{preset.label}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -216,7 +265,7 @@ export const Header: React.FC = () => {
           </div>
           <div>
             <h4 className="text-xs font-bold">{t('Report Export Successful', 'تم تصدير التقرير بنجاح')}</h4>
-            <p className="text-[11px] text-slate-300">{t('K-OS_Consolidated_Financial_Oct2026.pdf ready', 'تم تجهيز ملف التقرير المالي الموحد')}</p>
+            <p className="text-[11px] text-slate-300">{t('GLOBALSERVICES_Consolidated_Financial_Oct2026.pdf ready', 'تم تجهيز ملف التقرير المالي الموحد')}</p>
           </div>
         </div>
       )}

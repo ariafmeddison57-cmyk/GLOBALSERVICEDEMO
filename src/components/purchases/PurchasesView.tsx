@@ -70,7 +70,7 @@ export const PurchasesView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            {t('Purchasing & Supplier Procurement', 'المشتريات وسلاسل التوريد')}
+            {t('Purchaces', 'المشتريات')}
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
             {t(

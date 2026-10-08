@@ -35,9 +35,9 @@ export const PayrollView: React.FC = () => {
     setRecords((prev) => prev.map((r) => ({ ...r, wpsStatus: 'Processed' })));
   };
 
-  // Generate realistic Qatar Central Bank WPS SIF file content
+  // Generate realistic WPS SIF file content
   const sifContent = [
-    `HDR,K-OS_HOSPITALITY_GROUP_QATAR,CR104928,${new Date().toISOString().slice(0, 10).replace(/-/g, '')},${records.length},${totalPayrollDue.toFixed(2)},QAR,QNB`,
+    `HDR,GLOBALSERVICES_HOSPITALITY_GROUP_QATAR,CR104928,${new Date().toISOString().slice(0, 10).replace(/-/g, '')},${records.length},${totalPayrollDue.toFixed(2)},QAR,QNB`,
     ...records.map(
       (r, i) =>
         `DTR,${(i + 1).toString().padStart(4, '0')},${r.employeeName.toUpperCase()},${r.bankIban},${r.netPay.toFixed(2)},${r.basicSalary.toFixed(2)},${(r.allowances + r.overtimePay).toFixed(2)},0.00,SALARY_OCT_2026`
@@ -50,13 +50,10 @@ export const PayrollView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
-            {t('Payroll & Qatar WPS Compliance', 'مسير الرواتب ونظام حماية الأجور (WPS)')}
+            {t('Payroll', 'مسير الرواتب')}
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            {t(
-              'Automated salary computation, biometric overtime integration, and Ministry of Labour SIF file generation.',
-              'احتساب تلقائي للرواتب وساعات الإضافي واستخراج ملف نظام حماية الأجور لوزارة العمل القطرية.'
-            )}
+            {t('Payroll', 'مسير الرواتب')}
           </p>
         </div>
 
@@ -209,7 +206,7 @@ export const PayrollView: React.FC = () => {
                   <span>{t('Qatar Wage Protection SIF File Export', 'ملف نظام حماية الأجور (SIF)')}</span>
                 </h3>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Qatar Central Bank (QCB) & Ministry of Administrative Development, Labour and Social Affairs compliant.
+                  Ministry of Administrative Development, Labour and Social Affairs compliant.
                 </p>
               </div>
               <button onClick={() => setIsSifModalOpen(false)}>
@@ -223,7 +220,7 @@ export const PayrollView: React.FC = () => {
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-neutral-500">
-                Filename: <code className="font-mono font-bold">KOS_WPS_202610_SIF.csv</code>
+                Filename: <code className="font-mono font-bold">GLOBALSERVICES_WPS_202610_SIF.csv</code>
               </span>
               <button
                 onClick={() => {

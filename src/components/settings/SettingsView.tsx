@@ -3,7 +3,6 @@ import {
   Settings,
   Building2,
   Store,
-  Printer,
   Shield,
   CreditCard,
   CheckCircle2,
@@ -62,7 +61,7 @@ export const SettingsView: React.FC = () => {
         <div className="flex items-center gap-2">
           <Store className="w-4 h-4 text-amber-500" />
           <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-            {t('K-OS Brands Portfolio (5 Brands)', 'محفظة علامات K-OS (٥ علامات)')}
+            {t('GLOBALSERVICES Brands Portfolio (5 Brands)', 'محفظة علامات GLOBALSERVICES (٥ علامات)')}
           </h3>
         </div>
 
@@ -145,31 +144,6 @@ export const SettingsView: React.FC = () => {
                 value="0.0% (Qatar General F&B Law)"
                 className="w-full p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 font-mono font-medium"
               />
-            </div>
-          </div>
-        </div>
-
-        {/* Hardware & Cloud Sync */}
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Printer className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-              {t('Hardware & Cloud Sync Status', 'الأجهزة والطابعات والمزامنة')}
-            </h3>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between">
-              <span className="text-neutral-700 dark:text-neutral-300">Kitchen Display (KDS) LAN</span>
-              <span className="text-emerald-600 font-bold font-mono">Connected (192.168.1.104)</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between">
-              <span className="text-neutral-700 dark:text-neutral-300">Thermal Receipt Printer (80mm)</span>
-              <span className="text-emerald-600 font-bold font-mono">EPSON TM-T88VI Ready</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between">
-              <span className="text-neutral-700 dark:text-neutral-300">Qatar Central Bank WPS API</span>
-              <span className="text-emerald-600 font-bold font-mono">QNB Direct Gateway Active</span>
             </div>
           </div>
         </div>

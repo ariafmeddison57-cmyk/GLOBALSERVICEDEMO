@@ -276,7 +276,7 @@ export const MenuRecipesView: React.FC = () => {
     const recipeData = {
       productId: '',
       productName: formName,
-      prepInstructions: 'Standardized SOP recipe execution per K-OS group quality handbook.',
+      prepInstructions: 'Standardized SOP recipe execution per GLOBALSERVICES group quality handbook.',
       ingredients: formIngredients,
       totalFoodCost: computedTotalFoodCost,
       grossMarginPercent: computedGrossMargin,

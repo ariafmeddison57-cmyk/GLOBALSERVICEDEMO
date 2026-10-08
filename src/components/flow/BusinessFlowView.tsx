@@ -32,8 +32,8 @@ export const BusinessFlowView: React.FC = () => {
   const supplySteps = [
     {
       id: 'purchases',
-      title: '1. Vendor Purchases',
-      titleAr: '١. مشتريات الموردين',
+      title: '1. Purchaces',
+      titleAr: '١. المشتريات والتوريد',
       icon: Truck,
       targetView: 'purchases' as ViewMode,
       description: 'Centralized PO generation with suppliers (Baladna Dairy, Coffee Planet, Gulf Packaging).',
@@ -119,7 +119,7 @@ export const BusinessFlowView: React.FC = () => {
       titleAr: '٣. مسير الرواتب ونظام حماية الأجور',
       icon: WalletCards,
       targetView: 'payroll' as ViewMode,
-      description: 'Calculates basic salaries, allowances, and OT with 1-click Qatar Central Bank SIF export.',
+      description: 'Calculates basic salaries, allowances, and OT with 1-click WPS SIF export.',
       demoData: 'QAR 74,680 Net Payable · QNB WPS format',
       benefit: 'Full Ministry of Labour compliance; prevents company commercial registration (CR) blocks.',
     },
@@ -163,12 +163,12 @@ export const BusinessFlowView: React.FC = () => {
             </span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight">
-            {t('How K-OS Unifies Every Restaurant Operation', 'كيف يربط K-OS كافة مفاصل العمل في منصة واحدة')}
+            {t('How GLOBALSERVICES Unifies Every Restaurant Operation', 'كيف يربط GLOBALSERVICES كافة مفاصل العمل في منصة واحدة')}
           </h2>
           <p className="text-sm text-neutral-300 mt-1 max-w-2xl leading-relaxed">
             {t(
-              'Traditional restaurants use 5 disconnected systems (Excel, separate POS, payroll software, delivery aggregators). K-OS unites them into an automated, real-time feedback loop.',
-              'تستخدم المطاعم التقليدية برامج منفصلة تسبب هدر الوقت والأخطاء. يدمج K-OS المشتريات، الكاشير، شاشة المطبخ، الرواتب والتقارير في دورة عمل مؤتمتة واحدة.'
+              'Traditional restaurants use 5 disconnected systems (Excel, separate POS, payroll software, delivery aggregators). GLOBALSERVICES unites them into an automated, real-time feedback loop.',
+              'تستخدم المطاعم التقليدية برامج منفصلة تسبب هدر الوقت والأخطاء. يدمج GLOBALSERVICES المشتريات، الكاشير، شاشة المطبخ، الرواتب والتقارير في دورة عمل مؤتمتة واحدة.'
             )}
           </p>
         </div>
