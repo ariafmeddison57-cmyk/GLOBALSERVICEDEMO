@@ -5,7 +5,6 @@ import {
   Clock,
   ClipboardList,
   Search,
-  Plus,
   ArrowUpDown,
   CheckCircle2,
   Filter,
@@ -39,7 +38,6 @@ export const InventoryView: React.FC = () => {
     updateInventoryStock,
     updateInventoryItem,
     updateActualClosingStock,
-    addInventoryItem,
     damagedGoods,
     logDamagedStock,
     totalDamagedLoss,
@@ -70,18 +68,6 @@ export const InventoryView: React.FC = () => {
   const [newStockVal, setNewStockVal] = useState<string>('');
   const [newActualStockVal, setNewActualStockVal] = useState<string>('');
   const [newMinReorderVal, setNewMinReorderVal] = useState<string>('');
-
-  // Add Item Modal
-  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemNameAr, setNewItemNameAr] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<InventoryItem['category']>('Dairy & Fresh');
-  const [newItemUnit, setNewItemUnit] = useState<InventoryItem['unit']>('kg');
-  const [newItemOpeningStock, setNewItemOpeningStock] = useState<number>(50);
-  const [newItemMinReorder, setNewItemMinReorder] = useState<number>(15);
-  const [newItemCost, setNewItemCost] = useState<number>(25);
-  const [newItemLocation, setNewItemLocation] = useState<BranchId>('west-walk');
-  const [newItemSupplier, setNewItemSupplier] = useState('Baladna Food Industries');
 
   // Damaged stock modal state
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
@@ -326,34 +312,6 @@ export const InventoryView: React.FC = () => {
     setAdjustingItem(null);
   };
 
-  // Create new item (expiry will be assigned when recording purchases)
-  const handleCreateNewItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemName.trim()) return;
-
-    addInventoryItem({
-      name: newItemName.trim(),
-      nameAr: newItemNameAr.trim() || newItemName.trim(),
-      brandIds: ['kahwatee', 'kfries', 'kboba', 'kinda'],
-      category: newItemCategory,
-      unit: newItemUnit,
-      openingStock: newItemOpeningStock,
-      purchased: 0,
-      used: 0,
-      closingStock: newItemOpeningStock,
-      actualClosingStock: newItemOpeningStock,
-      minReorderLevel: newItemMinReorder,
-      unitCost: newItemCost,
-      location: newItemLocation,
-      expiryDate: '', // Left blank to be populated when receiving purchases!
-      supplier: newItemSupplier.trim() || 'Baladna Food Industries',
-    });
-
-    setIsAddItemModalOpen(false);
-    setNewItemName('');
-    setNewItemNameAr('');
-  };
-
   // Quick Disposal action for expired item
   const handleQuickLogExpired = (item: InventoryItem) => {
     setDamageItemId(item.id);
@@ -446,14 +404,6 @@ export const InventoryView: React.FC = () => {
                 {itemsWithVariance.length}
               </span>
             )}
-          </button>
-
-          <button
-            onClick={() => setIsAddItemModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-neutral-900 font-bold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t('+ Add New Ingredient / SKU', '+ إضافة مادة للمخزون')}</span>
           </button>
 
           <button
@@ -1685,11 +1635,16 @@ export const InventoryView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Quantity Damaged', 'الكمية التالفة')}
+                    {t('Quantity Damaged', 'الكمية التالفة')} ({inventory.find((i) => i.id === damageItemId)?.unit || 'units'})
                   </label>
                   <input
                     type="number"
-                    step="0.1"
+                    step={
+                      inventory.find((i) => i.id === damageItemId)?.unit === 'g' ||
+                      inventory.find((i) => i.id === damageItemId)?.unit === 'ml'
+                        ? '1'
+                        : '0.1'
+                    }
                     min="0.1"
                     required
                     value={damageQty}
@@ -1877,203 +1832,6 @@ export const InventoryView: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7. MODAL: ADD NEW INVENTORY ITEM (WITHOUT FORCED EXPIRY INPUT) */}
-      {isAddItemModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-neutral-800 mb-4">
-              <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                  {t('Add New Inventory Item / Raw Material', 'إضافة مادة خام جديدة للمخزون')}
-                </h3>
-                <p className="text-xs text-zinc-500">
-                  {t('Record new SKU without guessing expiry dates (expiry is logged upon Purchase receipt)', 'تسجيل صنف جديد بدون الحاجة لإدخال الصلاحية يدوياً (تُسجل مع المشتريات)')}
-                </p>
-              </div>
-              <button
-                onClick={() => setIsAddItemModalOpen(false)}
-                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-neutral-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateNewItem} className="space-y-3.5">
-              {/* Notice that expiry comes from Purchases */}
-              <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 text-xs flex items-start gap-2">
-                <PackageCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-amber-900 dark:text-amber-200 block">
-                    {t('Expiry Date Will Be Set From Purchases', 'تاريخ الصلاحية يُحدّد تلقائياً عبر المشتريات')}
-                  </span>
-                  <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
-                    {t(
-                      'No need to enter expiry date here. When you record ordered goods in Purchases, the batch expiration date will be applied automatically.',
-                      'لا داعي لإدخال تاريخ الصلاحية هنا. عند تسجيل البضاعة الموردة في شاشة المشتريات، سيتم تعيين تاريخ صلاحية الدفعة مباشرة.'
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Item Name (EN)', 'اسم الصنف بالإنجليزي')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="e.g. Organic Almond Milk 1L"
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Item Name (AR)', 'اسم الصنف بالعربي')}
-                  </label>
-                  <input
-                    type="text"
-                    value={newItemNameAr}
-                    onChange={(e) => setNewItemNameAr(e.target.value)}
-                    placeholder="مثال: حليب لوز عضوي ١ لتر"
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Category', 'التصنيف')}
-                  </label>
-                  <select
-                    value={newItemCategory}
-                    onChange={(e) => setNewItemCategory(e.target.value as any)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  >
-                    {categories.filter((c) => c !== 'all').map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Unit of Measurement', 'وحدة القياس')}
-                  </label>
-                  <select
-                    value={newItemUnit}
-                    onChange={(e) => setNewItemUnit(e.target.value as any)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  >
-                    <option value="kg">kg (كيلوغرام)</option>
-                    <option value="L">L (لتر)</option>
-                    <option value="pcs">pcs (حبة)</option>
-                    <option value="box">box (علبة)</option>
-                    <option value="carton">carton (كرتون)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Initial Stock', 'الرصيد الأولي')} *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    required
-                    value={newItemOpeningStock}
-                    onChange={(e) => setNewItemOpeningStock(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 text-xs font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Min Reorder', 'حد الطلب')}
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={newItemMinReorder}
-                    onChange={(e) => setNewItemMinReorder(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 text-xs font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Unit Cost (QAR)', 'التكلفة بالريال')} *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    required
-                    value={newItemCost}
-                    onChange={(e) => setNewItemCost(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 text-xs font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Storage Location', 'موقع التخزين')}
-                  </label>
-                  <select
-                    value={newItemLocation}
-                    onChange={(e) => setNewItemLocation(e.target.value as any)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  >
-                    {BRANCHES.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Supplier Name', 'اسم المورد')}
-                  </label>
-                  <input
-                    type="text"
-                    value={newItemSupplier}
-                    onChange={(e) => setNewItemSupplier(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-zinc-100 dark:border-neutral-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddItemModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold rounded-xl bg-zinc-100 dark:bg-neutral-800 text-zinc-700 dark:text-neutral-300"
-                >
-                  {t('Cancel', 'إلغاء')}
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-neutral-900 text-white shadow-sm"
-                >
-                  {t('Add to Inventory', 'إضافة للمخزون')}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

@@ -765,18 +765,23 @@ export const PurchasesView: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                        {t('Measurement Unit', 'وحدة القياس')}
+                      <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1 flex items-center justify-between">
+                        <span>{t('Measurement Unit', 'وحدة القياس')}</span>
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                          {t('g for small items, ml for small liquids', 'جرام للصغار، مل للسوائل')}
+                        </span>
                       </label>
                       <select
                         value={manualUnit}
                         onChange={(e) => setManualUnit(e.target.value as InventoryItem['unit'])}
                         className="w-full text-xs p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none font-semibold"
                       >
-                        <option value="kg">{t('kg (Kilograms)', 'كجم (كيلو جرام)')}</option>
-                        <option value="L">{t('L (Liters)', 'لتر')}</option>
+                        <option value="g">{t('g (Grams - small items & spices)', 'جرام (للأصناف الصغيرة والبهارات)')}</option>
+                        <option value="ml">{t('ml (Milliliters - small liquids & oils)', 'مل (للسوائل والزيوت الصغيرة)')}</option>
+                        <option value="kg">{t('kg (Kilograms - bulk ingredients)', 'كجم (كيلو جرام للمواد الكبيرة)')}</option>
+                        <option value="L">{t('L (Liters - bulk liquids & milk)', 'لتر (للسوائل الكبيرة والحليب)')}</option>
                         <option value="pcs">{t('pcs (Pieces / Units)', 'حبة / قطعة')}</option>
-                        <option value="box">{t('box (Boxes)', 'صندوق')}</option>
+                        <option value="box">{t('box (Boxes)', 'صندوق / علبة')}</option>
                         <option value="carton">{t('carton (Cartons)', 'كرتون / شدة')}</option>
                       </select>
                     </div>
@@ -873,7 +878,11 @@ export const PurchasesView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                    {t('Quantity Units', 'الكمية الإجمالية')} *
+                    {t('Quantity Units', 'الكمية الإجمالية')} (
+                    {itemEntryMode === 'manual'
+                      ? manualUnit
+                      : inventory.find((i) => i.id === newTargetInventoryId)?.unit || 'units'}
+                    ) *
                   </label>
                   <input
                     type="number"

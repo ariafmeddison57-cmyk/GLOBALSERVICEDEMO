@@ -37,12 +37,14 @@ export interface PosUnit {
   iconName: string;
 }
 
+export type MeasurementUnit = 'kg' | 'g' | 'L' | 'ml' | 'pcs' | 'box' | 'carton';
+
 export interface RecipeIngredient {
   inventoryItemId: string; // Links directly to InventoryItem.id
   name: string;
   nameAr?: string;
   portionQty: number;      // Quantity consumed per 1 order
-  unit: 'kg' | 'L' | 'pcs' | 'box';
+  unit: MeasurementUnit;
   unitCost: number;        // QAR
   costPerPortion: number;  // portionQty * unitCost
 }
@@ -136,7 +138,7 @@ export interface InventoryItem {
   nameAr: string;
   brandIds: BrandId[];
   category: 'Beans & Leaves' | 'Dairy & Fresh' | 'Syrups & Flavors' | 'Packaging' | 'Proteins & Base' | 'Dry Goods';
-  unit: 'kg' | 'L' | 'pcs' | 'box' | 'carton';
+  unit: MeasurementUnit;
   openingStock: number;
   purchased: number;
   used: number;
@@ -166,7 +168,7 @@ export interface DamagedInventoryRecord {
   itemName: string;
   itemNameAr: string;
   quantity: number;
-  unit: 'kg' | 'L' | 'pcs' | 'box' | 'carton';
+  unit: MeasurementUnit;
   unitCost: number; // QAR
   totalFinancialLoss: number; // quantity * unitCost in QAR
   reason: DamageReason;
