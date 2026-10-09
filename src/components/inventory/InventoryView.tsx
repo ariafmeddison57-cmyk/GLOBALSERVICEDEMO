@@ -16,12 +16,18 @@ import {
   X,
   Trash2,
   Flame,
-  FileSpreadsheet,
+  FileCheck,
   Calendar,
   AlertCircle,
   HelpCircle,
   Timer,
   ShieldAlert,
+  Scale,
+  Check,
+  Tag,
+  ArrowRight,
+  TrendingUp,
+  PackageCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { BRANCHES } from '../../data/mockData';
@@ -32,6 +38,7 @@ export const InventoryView: React.FC = () => {
     inventory,
     updateInventoryStock,
     updateInventoryItem,
+    updateActualClosingStock,
     addInventoryItem,
     damagedGoods,
     logDamagedStock,
@@ -44,17 +51,24 @@ export const InventoryView: React.FC = () => {
     isRTL,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'stock' | 'damaged'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'comparison' | 'damaged'>('stock');
+  const [comparisonFilter, setComparisonFilter] = useState<'all' | 'variance' | 'matched'>('all');
+  const [inlineActualCounts, setInlineActualCounts] = useState<{ [id: string]: string }>({});
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [expiryStatusFilter, setExpiryStatusFilter] = useState<'all' | 'expired' | 'critical' | 'warning' | 'fresh'>('all');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'low' | 'normal'>('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'low' | 'variance' | 'normal'>('all');
+
+  // Physical Count Modal
+  const [physicalCountItem, setPhysicalCountItem] = useState<InventoryItem | null>(null);
+  const [physicalCountVal, setPhysicalCountVal] = useState<string>('');
 
   // Adjust / Edit modal
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [newStockVal, setNewStockVal] = useState<string>('');
-  const [newExpiryVal, setNewExpiryVal] = useState<string>('');
+  const [newActualStockVal, setNewActualStockVal] = useState<string>('');
   const [newMinReorderVal, setNewMinReorderVal] = useState<string>('');
 
   // Add Item Modal
@@ -67,9 +81,6 @@ export const InventoryView: React.FC = () => {
   const [newItemMinReorder, setNewItemMinReorder] = useState<number>(15);
   const [newItemCost, setNewItemCost] = useState<number>(25);
   const [newItemLocation, setNewItemLocation] = useState<BranchId>('west-walk');
-  const [newItemExpiry, setNewItemExpiry] = useState<string>(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
   const [newItemSupplier, setNewItemSupplier] = useState('Baladna Food Industries');
 
   // Damaged stock modal state
@@ -90,38 +101,40 @@ export const InventoryView: React.FC = () => {
     if (!expiryDateStr) {
       return { daysRemaining: 999, isExpired: false, isCritical: false, isWarning: false, isFresh: true };
     }
-    const expiry = new Date(expiryDateStr);
-    const diffMs = expiry.getTime() - now.getTime();
-    const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const target = new Date(expiryDateStr);
+    const diffTime = target.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    const isExpired = daysRemaining < 0;
-    const isCritical = daysRemaining >= 0 && daysRemaining <= 7; // 0 to 7 days
-    const isWarning = daysRemaining > 7 && daysRemaining <= 30; // 8 to 30 days
-    const isFresh = daysRemaining > 30;
-
-    return { daysRemaining, isExpired, isCritical, isWarning, isFresh };
+    return {
+      daysRemaining: diffDays,
+      isExpired: diffDays < 0,
+      isCritical: diffDays >= 0 && diffDays <= 7,
+      isWarning: diffDays > 7 && diffDays <= 30,
+      isFresh: diffDays > 30,
+    };
   };
 
-  // Aggregated Counts
-  const totalValue = inventory.reduce((sum, item) => sum + item.closingStock * item.unitCost, 0);
-  const lowStockItems = inventory.filter((item) => item.closingStock <= item.minReorderLevel);
-  
-  const expiredItems = inventory.filter((item) => getExpiryMetrics(item.expiryDate).isExpired);
-  const criticalExpiringItems = inventory.filter((item) => getExpiryMetrics(item.expiryDate).isCritical);
-  const warningExpiringItems = inventory.filter((item) => getExpiryMetrics(item.expiryDate).isWarning);
-  const expiringSoonCount = criticalExpiringItems.length + warningExpiringItems.length;
+  // Variance calculations across inventory
+  const itemsWithVariance = inventory.filter((item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    return Math.abs(actual - item.closingStock) > 0.01;
+  });
 
-  const openPoCount = purchases.filter((p) => p.status !== 'Delivered').length;
+  const totalVarianceLossQar = inventory.reduce((sum, item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    const diff = actual - item.closingStock;
+    return sum + (diff * item.unitCost);
+  }, 0);
 
-  const categories = ['all', 'Beans & Leaves', 'Dairy & Fresh', 'Syrups & Flavors', 'Packaging', 'Proteins & Base', 'Dry Goods'];
-
-  const damageReasonsList: DamageReason[] = [
-    'Spoilage & Expired',
-    'Dropped & Spilled',
-    'Overcooked & Burned',
-    'Crushed Packaging',
-    'Prep Defect',
-    'Temperature Abuse',
+  // Filter calculations
+  const categories: string[] = [
+    'all',
+    'Beans & Leaves',
+    'Dairy & Fresh',
+    'Syrups & Flavors',
+    'Packaging',
+    'Proteins & Base',
+    'Dry Goods',
   ];
 
   const filteredInventory = inventory.filter((item) => {
@@ -129,56 +142,191 @@ export const InventoryView: React.FC = () => {
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.nameAr.includes(searchQuery) ||
       item.supplier.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.expiryDate.includes(searchQuery);
-    
+      item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.expiryDate && item.expiryDate.includes(searchQuery));
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     const matchesLocation = selectedLocation === 'all' || item.location === selectedLocation;
 
     const metrics = getExpiryMetrics(item.expiryDate);
-    let matchesExpiry = true;
-    if (expiryStatusFilter === 'expired') matchesExpiry = metrics.isExpired;
-    else if (expiryStatusFilter === 'critical') matchesExpiry = metrics.isCritical;
-    else if (expiryStatusFilter === 'warning') matchesExpiry = metrics.isWarning;
-    else if (expiryStatusFilter === 'fresh') matchesExpiry = metrics.isFresh;
+    const matchesExpiry =
+      expiryStatusFilter === 'all' ||
+      (expiryStatusFilter === 'expired' && metrics.isExpired) ||
+      (expiryStatusFilter === 'critical' && metrics.isCritical) ||
+      (expiryStatusFilter === 'warning' && metrics.isWarning) ||
+      (expiryStatusFilter === 'fresh' && metrics.isFresh);
 
-    let matchesStock = true;
-    if (stockStatusFilter === 'low') matchesStock = item.closingStock <= item.minReorderLevel;
-    else if (stockStatusFilter === 'normal') matchesStock = item.closingStock > item.minReorderLevel;
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    const hasVar = Math.abs(actual - item.closingStock) > 0.01;
+
+    const matchesStock =
+      stockStatusFilter === 'all' ||
+      (stockStatusFilter === 'low' && item.closingStock <= item.minReorderLevel) ||
+      (stockStatusFilter === 'variance' && hasVar) ||
+      (stockStatusFilter === 'normal' && item.closingStock > item.minReorderLevel);
 
     return matchesSearch && matchesCategory && matchesLocation && matchesExpiry && matchesStock;
   });
 
+  // KPI Computations
+  const totalSystemValue = inventory.reduce((sum, item) => sum + item.closingStock * item.unitCost, 0);
+  const totalActualPhysicalValue = inventory.reduce((sum, item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    return sum + (actual * item.unitCost);
+  }, 0);
+  const shortageItems = inventory.filter((item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    return item.closingStock - actual > 0.01;
+  });
+  const surplusItems = inventory.filter((item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    return actual - item.closingStock > 0.01;
+  });
+  const matchedItems = inventory.filter((item) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    return Math.abs(actual - item.closingStock) <= 0.01;
+  });
+
+  const expiredItems = inventory.filter((item) => getExpiryMetrics(item.expiryDate).isExpired);
+  const criticalExpiringItems = inventory.filter((item) => getExpiryMetrics(item.expiryDate).isCritical);
+  const lowStockItems = inventory.filter((item) => item.closingStock <= item.minReorderLevel);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  const handleUpdateInlineActual = (itemId: string, val: string) => {
+    setInlineActualCounts((prev) => ({ ...prev, [itemId]: val }));
+  };
+
+  const handleSaveSingleInline = (item: InventoryItem) => {
+    const raw = inlineActualCounts[item.id];
+    if (raw !== undefined) {
+      const parsed = parseFloat(raw);
+      if (!isNaN(parsed) && parsed >= 0) {
+        updateActualClosingStock(item.id, parsed);
+        setInlineActualCounts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        showToast(
+          t(
+            `Actual closing count for ${item.name} set to ${parsed} ${item.unit}.`,
+            `تم حفظ الجرد الفعلي لـ ${language === 'ar' ? item.nameAr : item.name} إلى ${parsed} ${item.unit}.`
+          )
+        );
+      }
+    }
+  };
+
+  const handleSaveAllInlineCounts = () => {
+    let count = 0;
+    Object.entries(inlineActualCounts).forEach(([id, rawVal]) => {
+      const parsed = parseFloat(rawVal);
+      if (!isNaN(parsed) && parsed >= 0) {
+        updateActualClosingStock(id, parsed);
+        count++;
+      }
+    });
+    setInlineActualCounts({});
+    showToast(
+      t(
+        `Successfully saved actual closing counts for ${count} items.`,
+        `تم حفظ الجرد الفعلي لـ ${count} أصناف بنجاح.`
+      )
+    );
+  };
+
+  const handleReconcileSystemToActual = (item: InventoryItem) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    updateInventoryItem(item.id, { closingStock: actual });
+    showToast(
+      t(
+        `System theoretical stock for ${item.name} adjusted to ${actual} ${item.unit} to match physical count.`,
+        `تمت مطابقة رصيد النظام لـ ${language === 'ar' ? item.nameAr : item.name} إلى ${actual} ${item.unit} ليتوافق مع الجرد الفعلي.`
+      )
+    );
+  };
+
+  const handleReconcileAllDiscrepancies = () => {
+    let count = 0;
+    inventory.forEach((item) => {
+      const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+      if (Math.abs(actual - item.closingStock) > 0.01) {
+        updateInventoryItem(item.id, { closingStock: actual });
+        count++;
+      }
+    });
+    showToast(
+      t(
+        `Reconciled ${count} items: System stock adjusted to match physical closing counts.`,
+        `تمت تسوية ${count} أصناف: تم تعديل رصيد النظام ليتطابق مع الجرد الفعلي.`
+      )
+    );
+  };
+
+  const handleWriteOffShortage = (item: InventoryItem) => {
+    const actual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    const shortage = item.closingStock - actual;
+    if (shortage > 0) {
+      setDamageItemId(item.id);
+      setDamageQty(parseFloat(shortage.toFixed(2)));
+      setDamageBranch(item.location);
+      setDamageReason('Spoilage & Expired');
+      setDamageNotes(
+        language === 'ar'
+          ? `عجز في الجرد الفعلي: رصيد النظام ${item.closingStock} والجرد الفعلي ${actual} (${shortage.toFixed(2)} ${item.unit})`
+          : `Physical closing count shortage: System ${item.closingStock} vs Actual ${actual} (${shortage.toFixed(2)} ${item.unit})`
+      );
+      setIsDamageModalOpen(true);
+    }
+  };
+
+  // Quick Open Physical Count Modal
+  const handleOpenPhysicalCount = (item: InventoryItem) => {
+    setPhysicalCountItem(item);
+    const currentActual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    setPhysicalCountVal(currentActual.toString());
+  };
+
+  const handleSavePhysicalCount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!physicalCountItem) return;
+    const parsed = parseFloat(physicalCountVal);
+    if (!isNaN(parsed) && parsed >= 0) {
+      updateActualClosingStock(physicalCountItem.id, parsed);
+    }
+    setPhysicalCountItem(null);
+  };
+
+  // Adjust Modal Open
   const handleOpenAdjust = (item: InventoryItem) => {
     setAdjustingItem(item);
     setNewStockVal(item.closingStock.toString());
-    setNewExpiryVal(item.expiryDate || todayStr);
+    const currentActual = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+    setNewActualStockVal(currentActual.toString());
     setNewMinReorderVal(item.minReorderLevel.toString());
   };
 
   const handleSaveAdjust = () => {
     if (!adjustingItem) return;
     const parsedStock = parseFloat(newStockVal);
-    const parsedMin = parseFloat(newMinReorderVal);
+    const parsedActual = parseFloat(newActualStockVal);
+    const parsedMin = parseInt(newMinReorderVal, 10);
 
-    updateInventoryItem(adjustingItem.id, {
-      closingStock: !isNaN(parsedStock) && parsedStock >= 0 ? parsedStock : adjustingItem.closingStock,
-      expiryDate: newExpiryVal || adjustingItem.expiryDate,
-      minReorderLevel: !isNaN(parsedMin) && parsedMin >= 0 ? parsedMin : adjustingItem.minReorderLevel,
-    });
+    const updates: Partial<InventoryItem> = {};
+    if (!isNaN(parsedStock) && parsedStock >= 0) updates.closingStock = parsedStock;
+    if (!isNaN(parsedActual) && parsedActual >= 0) updates.actualClosingStock = parsedActual;
+    if (!isNaN(parsedMin) && parsedMin >= 0) updates.minReorderLevel = parsedMin;
 
+    updateInventoryItem(adjustingItem.id, updates);
     setAdjustingItem(null);
   };
 
-  const handleQuickLogExpired = (item: InventoryItem) => {
-    // Quick write-off prefilling for an expired item
-    setDamageItemId(item.id);
-    setDamageQty(item.closingStock > 0 ? item.closingStock : 1);
-    setDamageReason('Spoilage & Expired');
-    setDamageBranch(item.location);
-    setDamageNotes(`Expired on ${item.expiryDate}. Auto-logged for health safety write-off.`);
-    setIsDamageModalOpen(true);
-  };
-
+  // Create new item (expiry will be assigned when recording purchases)
   const handleCreateNewItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
@@ -186,18 +334,19 @@ export const InventoryView: React.FC = () => {
     addInventoryItem({
       name: newItemName.trim(),
       nameAr: newItemNameAr.trim() || newItemName.trim(),
-      brandIds: ['kahwatee', 'events'],
+      brandIds: ['kahwatee', 'kfries', 'kboba', 'kinda'],
       category: newItemCategory,
       unit: newItemUnit,
       openingStock: newItemOpeningStock,
       purchased: 0,
       used: 0,
       closingStock: newItemOpeningStock,
+      actualClosingStock: newItemOpeningStock,
       minReorderLevel: newItemMinReorder,
       unitCost: newItemCost,
       location: newItemLocation,
-      expiryDate: newItemExpiry,
-      supplier: newItemSupplier.trim() || 'Central Supplier',
+      expiryDate: '', // Left blank to be populated when receiving purchases!
+      supplier: newItemSupplier.trim() || 'Baladna Food Industries',
     });
 
     setIsAddItemModalOpen(false);
@@ -205,12 +354,24 @@ export const InventoryView: React.FC = () => {
     setNewItemNameAr('');
   };
 
+  // Quick Disposal action for expired item
+  const handleQuickLogExpired = (item: InventoryItem) => {
+    setDamageItemId(item.id);
+    setDamageQty(item.closingStock);
+    setDamageBranch(item.location);
+    setDamageReason('Spoilage & Expired');
+    setDamageNotes(
+      language === 'ar'
+        ? `إتلاف فوري للصنف منتهي الصلاحية بتاريخ ${item.expiryDate}`
+        : `Immediate disposal of expired stock (Date: ${item.expiryDate})`
+    );
+    setIsDamageModalOpen(true);
+  };
+
   const handleSubmitDamage = (e: React.FormEvent) => {
     e.preventDefault();
     const item = inventory.find((i) => i.id === damageItemId);
     if (!item || damageQty <= 0) return;
-
-    const lossAmount = parseFloat((damageQty * item.unitCost).toFixed(2));
 
     logDamagedStock({
       inventoryItemId: item.id,
@@ -219,52 +380,88 @@ export const InventoryView: React.FC = () => {
       quantity: damageQty,
       unit: item.unit,
       unitCost: item.unitCost,
-      totalFinancialLoss: lossAmount,
+      totalFinancialLoss: parseFloat((damageQty * item.unitCost).toFixed(2)),
       reason: damageReason,
       branchId: damageBranch,
-      loggedBy: damageLoggedBy.trim() || 'Shift Supervisor',
+      loggedBy: damageLoggedBy,
       notes: damageNotes.trim() || undefined,
     });
 
     setIsDamageModalOpen(false);
-    setDamageQty(1);
     setDamageNotes('');
   };
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 rounded-2xl shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200 border border-neutral-700 dark:border-neutral-300">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="p-1 hover:bg-neutral-800 dark:hover:bg-neutral-200 rounded-lg ml-2 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 1. Header Banner */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl p-6 border border-zinc-200/80 dark:border-neutral-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-neutral-200 text-[10px] font-bold tracking-wide uppercase">
-              {t('Central Warehouse & Branches', 'المستودع المركزي والفروع')}
+              {t('Inventory & Stocktake Control', 'إدارة المخزون والجرد الدوري')}
             </span>
-            {expiredItems.length > 0 && (
-              <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 text-[10px] font-black uppercase tracking-wide flex items-center gap-1 animate-pulse">
-                <AlertCircle className="w-3 h-3" />
-                <span>{expiredItems.length} {t('Expired SKUs Require Disposal', 'أصناف منتهية الصلاحية')}</span>
-              </span>
-            )}
+            <span className="text-xs text-neutral-400">•</span>
+            <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">
+              {t('System Stock vs Actual Closing Count Reconciliation', 'مطابقة الرصيد الدفتري مع الجرد الفعلي')}
+            </span>
           </div>
           <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
-            {t('Inventory Ledger, Expiration Dates & Waste Tracking', 'دفتر المخزون، تواريخ الصلاحية وسجل الهدر والتلف')}
+            {t('Inventory Ledger, Stocktake & Shelf Expiry', 'جدول أرصدة المخزون، الجرد الفعلي وتواريخ الصلاحية')}
           </h2>
           <p className="text-xs text-zinc-500 dark:text-neutral-400 mt-1">
             {t(
-              'Tracks live stock, shelf-life expiration dates, FIFO alerts, recipe depletion, and automatic write-offs.',
-              'متابعة المخزون الحي، تواريخ انتهاء الصلاحية، تنبيهات التلف، استهلاك الوصفات وشطب الهدر المالي.'
+              'Compare theoretical system stock with manual physical counts, view shelf-life expiry dates derived from Purchases, and write off inventory shrinkage.',
+              'مقارنة رصيد النظام الدفتري مع الجرد الفعلي المدخل يدوياً، ومتابعة تواريخ انتهاء الصلاحية المحددة من فواتير المشتريات.'
             )}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
+            onClick={() => setActiveTab('comparison')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-95 ${
+              activeTab === 'comparison'
+                ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400'
+                : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-800'
+            }`}
+          >
+            <Scale className="w-4 h-4" />
+            <span>{t('Actual Closing Count (Compare)', 'الجرد الفعلي والمطابقة')}</span>
+            {itemsWithVariance.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono text-[10px] font-bold">
+                {itemsWithVariance.length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setIsAddItemModalOpen(true)}
             className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-neutral-900 font-bold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>{t('Add New Ingredient / SKU', '+ إضافة مادة للمخزون')}</span>
+            <span>{t('+ Add New Ingredient / SKU', '+ إضافة مادة للمخزون')}</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('purchases')}
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-95"
+          >
+            <PackageCheck className="w-4 h-4" />
+            <span>{t('Record Purchase (Set Expiry)', 'تسجيل مشترى (تحديث الصلاحية)')}</span>
           </button>
 
           <button
@@ -274,34 +471,59 @@ export const InventoryView: React.FC = () => {
             <AlertTriangle className="w-4 h-4" />
             <span>{t('+ Log Damaged / Expired Goods', '+ تسجيل بضاعة تالفة / هدر')}</span>
           </button>
-
-          <button
-            onClick={() => setCurrentView('menu')}
-            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs border border-zinc-200 dark:border-neutral-700 transition-colors flex items-center gap-2"
-          >
-            <Layers className="w-4 h-4 text-blue-600" />
-            <span>{t('View Recipe BOMs', 'معاينة الوصفات')}</span>
-          </button>
         </div>
       </div>
 
-      {/* 2. Top Summary KPI Cards (Refined SaaS sizing) */}
+      {/* 2. Top Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Total Value */}
+        {/* Total System Value */}
         <div className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-zinc-200/80 dark:border-neutral-800 shadow-xs">
           <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-            {t('Total Inventory Value', 'قيمة المخزون الكلية')}
+            {t('Total System Stock Value', 'قيمة المخزون الدفتري')}
           </span>
-          <div className="text-2xl font-bold text-neutral-900 dark:text-white mt-1">
-            {formatCurrency(totalValue)}
+          <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1 tabular-nums">
+            {formatCurrency(totalSystemValue)}
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
             {inventory.length} {t('Active ingredients & SKUs', 'صنف ومادة غذائية')}
           </p>
         </div>
 
-        {/* Expired Stock Alert Card */}
-        <div 
+        {/* Physical Count Reconciliation / Variance Card */}
+        <div
+          onClick={() => {
+            setActiveTab('stock');
+            setStockStatusFilter(stockStatusFilter === 'variance' ? 'all' : 'variance');
+          }}
+          className={`cursor-pointer transition-all rounded-2xl p-4 border shadow-xs ${
+            itemsWithVariance.length > 0
+              ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-900/60 hover:ring-2 hover:ring-amber-400'
+              : 'bg-white dark:bg-neutral-900 border-zinc-200/80 dark:border-neutral-800'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1">
+              <Scale className="w-3.5 h-3.5" />
+              {t('Physical Count Variance', 'فروقات الجرد الفعلي')}
+            </span>
+            {itemsWithVariance.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded bg-amber-500 text-white font-mono text-[10px] font-bold">
+                {itemsWithVariance.length} {t('Diffs', 'فروقات')}
+              </span>
+            )}
+          </div>
+          <div className={`text-2xl font-bold font-mono mt-1 tabular-nums ${totalVarianceLossQar < 0 ? 'text-rose-600' : totalVarianceLossQar > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            {totalVarianceLossQar === 0 ? '0.00 QAR' : formatCurrency(totalVarianceLossQar)}
+          </div>
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+            {itemsWithVariance.length > 0
+              ? t(`${itemsWithVariance.length} items differ from physical count`, `${itemsWithVariance.length} أصناف فيها انحراف عن الجرد`)
+              : t('Physical count exactly matches system', 'الجرد الفعلي مطابق للنظام ١٠٠٪')}
+          </p>
+        </div>
+
+        {/* Expired Items Alert Card */}
+        <div
           onClick={() => {
             setActiveTab('stock');
             setExpiryStatusFilter(expiryStatusFilter === 'expired' ? 'all' : 'expired');
@@ -331,8 +553,8 @@ export const InventoryView: React.FC = () => {
           </p>
         </div>
 
-        {/* Expiring Soon Card */}
-        <div 
+        {/* Expiring Soon (<= 7 Days) */}
+        <div
           onClick={() => {
             setActiveTab('stock');
             setExpiryStatusFilter(expiryStatusFilter === 'critical' ? 'all' : 'critical');
@@ -353,12 +575,12 @@ export const InventoryView: React.FC = () => {
             {criticalExpiringItems.length} {t('Items', 'صنف')}
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
-            +{warningExpiringItems.length} {t('expiring in 30 days', 'خلال ٣٠ يوماً')}
+            {t('Check supplier batches from purchases', 'متابعة الدفعات الموردة')}
           </p>
         </div>
 
         {/* Low Stock Threshold */}
-        <div 
+        <div
           onClick={() => {
             setActiveTab('stock');
             setStockStatusFilter(stockStatusFilter === 'low' ? 'all' : 'low');
@@ -375,28 +597,9 @@ export const InventoryView: React.FC = () => {
             {t('Below minimum reorder level', 'أقل من حد إعادة الطلب')}
           </p>
         </div>
-
-        {/* DAMAGED GOODS / SPOILAGE LOSS */}
-        <div 
-          onClick={() => setActiveTab('damaged')}
-          className="cursor-pointer bg-rose-50/50 dark:bg-rose-950/20 hover:ring-2 hover:ring-rose-300 rounded-2xl p-4 border border-rose-200/70 dark:border-rose-900/40 shadow-xs transition-all"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
-              {t('Damaged Stock Loss (MTD)', 'خسائر التلف والهدر')}
-            </span>
-            <AlertTriangle className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="text-2xl font-bold text-rose-700 dark:text-rose-400 mt-1">
-            {formatCurrency(totalDamagedLoss)}
-          </div>
-          <p className="text-[11px] text-rose-600/90 mt-1 font-medium">
-            {damagedGoods.length} {t('spoilage incidents written off', 'حالات إتلاف مسجلة')}
-          </p>
-        </div>
       </div>
 
-      {/* 3. Section Tabs: Stock Ledger vs Damaged Goods Log */}
+      {/* 3. Section Tabs: Stock Ledger vs Comparison vs Damaged Goods Log */}
       <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-neutral-800 pb-2">
         <button
           onClick={() => setActiveTab('stock')}
@@ -407,9 +610,28 @@ export const InventoryView: React.FC = () => {
           }`}
         >
           <Boxes className="w-4 h-4" />
-          <span>{t('Inventory Stock Ledger & Shelf Expiry', 'جدول أرصدة المخزون وتواريخ الصلاحية')}</span>
+          <span>{t('Inventory & Shelf Expiry', 'أرصدة المخزون وتواريخ الصلاحية')}</span>
           <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-white dark:bg-neutral-200 dark:text-neutral-900">
             {inventory.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('comparison')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'comparison'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-zinc-500 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400'
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          <span>{t('System vs Actual Closing Count', 'مقارنة رصيد النظام مع الجرد الفعلي')}</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            itemsWithVariance.length > 0
+              ? 'bg-amber-400 text-amber-950'
+              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+          }`}>
+            {itemsWithVariance.length > 0 ? `${itemsWithVariance.length} ${t('Diffs', 'فروقات')}` : t('Matched', 'مطابق')}
           </span>
         </button>
 
@@ -429,7 +651,7 @@ export const InventoryView: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: Main Inventory Ledger */}
+      {/* TAB 1: Main Inventory Ledger with System vs Actual Count & Purchases Expiry */}
       {activeTab === 'stock' && (
         <div className="space-y-4">
           {/* Expiry Quick Filter Bar */}
@@ -452,54 +674,38 @@ export const InventoryView: React.FC = () => {
 
             <button
               onClick={() => setExpiryStatusFilter('expired')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1 ${
                 expiryStatusFilter === 'expired'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 hover:bg-rose-100'
+                  ? 'bg-rose-600 text-white font-bold'
+                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100'
               }`}
             >
-              <AlertCircle className="w-3 h-3" />
-              <span>{t('Expired Already', 'منتهية الصلاحية')}</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
-                {expiredItems.length}
-              </span>
+              <AlertTriangle className="w-3 h-3" />
+              <span>{t('Expired Stock', 'منتهي')} ({expiredItems.length})</span>
             </button>
 
             <button
               onClick={() => setExpiryStatusFilter('critical')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1 ${
                 expiryStatusFilter === 'critical'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:bg-amber-100'
+                  ? 'bg-amber-600 text-white font-bold'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100'
               }`}
             >
               <Timer className="w-3 h-3" />
-              <span>{t('Critical (≤ 7 Days)', 'حرجة (خلال ٧ أيام)')}</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
-                {criticalExpiringItems.length}
-              </span>
+              <span>{t('Expiring (≤ 7 Days)', 'ينتهي خلال أسبوع')} ({criticalExpiringItems.length})</span>
             </button>
 
             <button
-              onClick={() => setExpiryStatusFilter('warning')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                expiryStatusFilter === 'warning'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 hover:bg-blue-100'
+              onClick={() => setStockStatusFilter(stockStatusFilter === 'variance' ? 'all' : 'variance')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1 ${
+                stockStatusFilter === 'variance'
+                  ? 'bg-blue-600 text-white font-bold'
+                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 hover:bg-blue-100'
               }`}
             >
-              {t('Warning (8 - 30 Days)', 'تحذير (٨ - ٣٠ يوماً)')} ({warningExpiringItems.length})
-            </button>
-
-            <button
-              onClick={() => setExpiryStatusFilter('fresh')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                expiryStatusFilter === 'fresh'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100'
-              }`}
-            >
-              {t('Fresh (> 30 Days)', 'صالحة ومستقرة')}
+              <Scale className="w-3 h-3" />
+              <span>{t('Has Stock Variance', 'يوجد فرق جرد')} ({itemsWithVariance.length})</span>
             </button>
 
             {(expiryStatusFilter !== 'all' || stockStatusFilter !== 'all' || searchQuery || selectedCategory !== 'all' || selectedLocation !== 'all') && (
@@ -526,13 +732,12 @@ export const InventoryView: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('Filter by item, expiry date (YYYY-MM-DD), or supplier...', 'بحث بالصنف، تاريخ الصلاحية، أو المورد...')}
+                placeholder={t('Filter by item, supplier, or batch expiry...', 'بحث بالصنف، المورد، أو تاريخ الصلاحية...')}
                 className="w-full pl-10 pr-4 py-2 text-xs bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 rounded-xl outline-none"
               />
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto">
-              {/* Category Filter */}
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -546,7 +751,6 @@ export const InventoryView: React.FC = () => {
                 ))}
               </select>
 
-              {/* Location Filter */}
               <select
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
@@ -559,17 +763,6 @@ export const InventoryView: React.FC = () => {
                   </option>
                 ))}
               </select>
-
-              {/* Stock Level Filter */}
-              <select
-                value={stockStatusFilter}
-                onChange={(e) => setStockStatusFilter(e.target.value as any)}
-                className="text-xs font-medium bg-zinc-100 dark:bg-neutral-800 text-zinc-700 dark:text-neutral-300 px-3 py-2 rounded-xl border border-zinc-200 dark:border-neutral-700"
-              >
-                <option value="all">{t('All Stock Levels', 'كافة مستويات الرصيد')}</option>
-                <option value="low">{t('Low Stock Only', 'الرصيد المنخفض فقط')}</option>
-                <option value="normal">{t('Normal Stock', 'الرصيد الطبيعي')}</option>
-              </select>
             </div>
           </div>
 
@@ -579,43 +772,48 @@ export const InventoryView: React.FC = () => {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-zinc-50 dark:bg-neutral-800/60 border-b border-zinc-200 dark:border-neutral-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-                    <th className="py-3 px-4">{t('Product / Item', 'الصنف / المادة')}</th>
+                    <th className="py-3 px-4">{t('Product / Ingredient', 'الصنف / المادة')}</th>
                     <th className="py-3 px-3">{t('Category', 'التصنيف')}</th>
-                    <th className="py-3 px-3 text-right">{t('Opening', 'الافتتاحي')}</th>
-                    <th className="py-3 px-3 text-right">{t('Purchased', 'المشترى')}</th>
-                    <th className="py-3 px-3 text-right">{t('Used', 'المستهلك')}</th>
-                    <th className="py-3 px-3 text-right">{t('Closing Stock', 'المخزون الحالي')}</th>
-                    <th className="py-3 px-3 text-right">{t('Total Value', 'القيمة')}</th>
-                    <th className="py-3 px-3">{t('Expiration Date', 'تاريخ الصلاحية')}</th>
+                    <th className="py-3 px-3 text-right">{t('System Stock', 'رصيد النظام')}</th>
+                    <th className="py-3 px-3 text-right">{t('Actual Closing Count', 'الجرد الفعلي')}</th>
+                    <th className="py-3 px-3 text-right">{t('Variance (Diff)', 'فرق الجرد')}</th>
+                    <th className="py-3 px-3 text-right">{t('Unit Cost', 'سعر الوحدة')}</th>
+                    <th className="py-3 px-3">{t('Expiration (From Purchases)', 'الصلاحية (من المشتريات)')}</th>
                     <th className="py-3 px-3 text-center">{t('Shelf Status', 'حالة الصلاحية')}</th>
-                    <th className="py-3 px-4 text-center">{t('Action', 'إجراء')}</th>
+                    <th className="py-3 px-4 text-center">{t('Actions', 'إجراءات')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-neutral-800 font-medium">
                   {filteredInventory.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-zinc-400">
+                      <td colSpan={9} className="py-12 text-center text-zinc-400">
                         <Boxes className="w-8 h-8 mx-auto mb-2 opacity-40" />
                         <p>{t('No inventory items match the selected filter criteria.', 'لا توجد أصناف مطابقة لمعايير البحث الحالية.')}</p>
                       </td>
                     </tr>
                   ) : (
                     filteredInventory.map((item) => {
-                      const isLow = item.closingStock <= item.minReorderLevel;
-                      const totalItemVal = item.closingStock * item.unitCost;
                       const expiryMetrics = getExpiryMetrics(item.expiryDate);
+                      const isLow = item.closingStock <= item.minReorderLevel;
+                      const actualCount = item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock;
+                      const variance = actualCount - item.closingStock;
+                      const varianceFinancial = variance * item.unitCost;
+                      const hasVariance = Math.abs(variance) > 0.01;
 
                       return (
-                        <tr 
-                          key={item.id} 
+                        <tr
+                          key={item.id}
                           className={`transition-colors ${
                             expiryMetrics.isExpired
                               ? 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50 dark:hover:bg-rose-950/30'
                               : expiryMetrics.isCritical
                               ? 'bg-amber-50/30 dark:bg-amber-950/15 hover:bg-amber-50 dark:hover:bg-amber-950/25'
+                              : hasVariance
+                              ? 'bg-blue-50/20 dark:bg-blue-950/10 hover:bg-blue-50/40'
                               : 'hover:bg-zinc-50/80 dark:hover:bg-neutral-800/40'
                           }`}
                         >
+                          {/* Product / Ingredient */}
                           <td className="py-3.5 px-4">
                             <div className="font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                               <span>{language === 'ar' ? item.nameAr : item.name}</span>
@@ -630,40 +828,76 @@ export const InventoryView: React.FC = () => {
                             </div>
                           </td>
 
+                          {/* Category */}
                           <td className="py-3.5 px-3">
                             <span className="px-2 py-0.5 rounded-full text-[10px] bg-zinc-100 dark:bg-neutral-800 text-zinc-600 dark:text-neutral-300 font-medium">
                               {item.category}
                             </span>
                           </td>
 
-                          <td className="py-3.5 px-3 text-right font-mono text-zinc-600 dark:text-neutral-400">
-                            {item.openingStock} {item.unit}
-                          </td>
-
-                          <td className="py-3.5 px-3 text-right font-mono text-blue-600 dark:text-blue-400 font-bold">
-                            +{item.purchased} {item.unit}
-                          </td>
-
-                          <td className="py-3.5 px-3 text-right font-mono text-amber-600 dark:text-amber-400 font-bold">
-                            -{item.used} {item.unit}
-                          </td>
-
+                          {/* SYSTEM THEORETICAL STOCK */}
                           <td className="py-3.5 px-3 text-right">
-                            <span className={`font-mono font-black text-sm ${isLow ? 'text-rose-600' : 'text-neutral-900 dark:text-white'}`}>
+                            <span className={`font-mono font-bold text-sm ${isLow ? 'text-amber-600' : 'text-neutral-900 dark:text-white'}`}>
                               {item.closingStock} {item.unit}
                             </span>
-                            {isLow && (
-                              <span className="block text-[10px] font-bold text-rose-500 uppercase">
-                                {t('Reorder', 'إعادة طلب')}
+                            <span className="block text-[10px] text-zinc-400">
+                              {t('Book Stock', 'دفتري')}
+                            </span>
+                          </td>
+
+                          {/* ACTUAL CLOSING COUNT (MANUALLY ENTERED) */}
+                          <td className="py-3.5 px-3 text-right">
+                            <div
+                              onClick={() => handleOpenPhysicalCount(item)}
+                              className="cursor-pointer group inline-flex flex-col items-end"
+                              title={t('Click to enter/adjust manual physical count', 'اضغط لإدخال وتعديل الجرد الفعلي')}
+                            >
+                              <span className="font-mono font-black text-sm text-blue-700 dark:text-blue-300 group-hover:underline flex items-center gap-1">
+                                <span>{actualCount} {item.unit}</span>
+                                <Edit3 className="w-3 h-3 text-zinc-400 group-hover:text-blue-600 inline" />
                               </span>
+                              <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 font-medium">
+                                {item.actualClosingStock !== undefined
+                                  ? t('Manual Count', 'جرد يدوي')
+                                  : t('Click to count', 'اضغط للجرد')}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* STOCK VARIANCE (DIFF) */}
+                          <td className="py-3.5 px-3 text-right font-mono">
+                            {!hasVariance ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{t('Matched', 'مطابق')}</span>
+                              </span>
+                            ) : variance < 0 ? (
+                              <div>
+                                <span className="font-bold text-rose-600 dark:text-rose-400 text-xs block">
+                                  {variance} {item.unit}
+                                </span>
+                                <span className="text-[10px] text-rose-500 font-medium">
+                                  {formatCurrency(varianceFinancial)} {t('short', 'عجز')}
+                                </span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-bold text-amber-600 dark:text-amber-400 text-xs block">
+                                  +{variance} {item.unit}
+                                </span>
+                                <span className="text-[10px] text-amber-600 font-medium">
+                                  +{formatCurrency(varianceFinancial)} {t('surplus', 'فائض')}
+                                </span>
+                              </div>
                             )}
                           </td>
 
-                          <td className="py-3.5 px-3 text-right font-mono font-bold text-neutral-900 dark:text-white">
-                            {formatCurrency(totalItemVal)}
+                          {/* Unit Cost */}
+                          <td className="py-3.5 px-3 text-right font-mono text-neutral-600 dark:text-neutral-400">
+                            {formatCurrency(item.unitCost)}
                           </td>
 
-                          {/* EXPIRATION DATE COLUMN */}
+                          {/* EXPIRATION DATE COLUMN (DERIVED FROM PURCHASES) */}
                           <td className="py-3.5 px-3">
                             <div className="flex items-center gap-1.5 font-mono text-xs">
                               <Calendar className={`w-3.5 h-3.5 ${
@@ -680,7 +914,7 @@ export const InventoryView: React.FC = () => {
                                   ? 'text-amber-700 dark:text-amber-400 font-bold'
                                   : 'text-neutral-800 dark:text-neutral-200'
                               }`}>
-                                {item.expiryDate || 'N/A'}
+                                {item.expiryDate || t('From Purchases', 'من المشتريات')}
                               </span>
                             </div>
                             <span className="text-[10px] text-zinc-400 block mt-0.5">
@@ -688,7 +922,9 @@ export const InventoryView: React.FC = () => {
                                 ? t(`Expired ${Math.abs(expiryMetrics.daysRemaining)}d ago`, `انتهت منذ ${Math.abs(expiryMetrics.daysRemaining)} أيام`)
                                 : expiryMetrics.daysRemaining === 0
                                 ? t('Expires today!', 'ينتهي اليوم!')
-                                : t(`${expiryMetrics.daysRemaining} days left`, `متبقي ${expiryMetrics.daysRemaining} يوماً`)}
+                                : item.expiryDate
+                                ? t(`${expiryMetrics.daysRemaining}d left (Purchase batch)`, `${expiryMetrics.daysRemaining} يوم (دفعة المشتريات)`)
+                                : t('Record in Purchases to set', 'سجل في المشتريات للتحديد')}
                             </span>
                           </td>
 
@@ -720,7 +956,17 @@ export const InventoryView: React.FC = () => {
                           {/* ACTION COLUMN */}
                           <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
-                              {expiryMetrics.isExpired ? (
+                              {/* Quick Physical Count Button */}
+                              <button
+                                onClick={() => handleOpenPhysicalCount(item)}
+                                className="px-2 py-1 text-[10px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 rounded-lg transition-colors flex items-center gap-1"
+                                title={t('Enter Actual Physical Count', 'تسجيل الجرد الفعلي')}
+                              >
+                                <Scale className="w-3 h-3" />
+                                <span>{t('Count', 'جرد')}</span>
+                              </button>
+
+                              {expiryMetrics.isExpired && (
                                 <button
                                   onClick={() => handleQuickLogExpired(item)}
                                   className="px-2 py-1 text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors flex items-center gap-1"
@@ -729,12 +975,12 @@ export const InventoryView: React.FC = () => {
                                   <AlertTriangle className="w-3 h-3" />
                                   <span>{t('Write Off', 'إتلاف')}</span>
                                 </button>
-                              ) : null}
+                              )}
 
                               <button
                                 onClick={() => handleOpenAdjust(item)}
                                 className="p-1.5 text-zinc-500 hover:text-neutral-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-neutral-800 transition-colors"
-                                title="Edit Stock & Expiry Date"
+                                title="Edit Stock & Reorder Thresholds"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
@@ -751,7 +997,434 @@ export const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: Damaged Goods & Spoilage Write-Off Ledger */}
+      {/* TAB: SYSTEM VS ACTUAL CLOSING COUNT COMPARISON AUDIT */}
+      {activeTab === 'comparison' && (
+        <div className="space-y-4">
+          {/* Comparison Banner */}
+          <div className="bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 dark:from-blue-950/40 dark:via-neutral-900 dark:to-blue-950/20 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                    {t('System Theoretical Stock vs. Actual Physical Closing Count Audit', 'مطابقة الرصيد الدفتري للنظام مع الجرد الفعلي اليدوي')}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300">
+                    {t('End-of-Shift Stocktake', 'الجرد الدوري ونهاية الوردية')}
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-3xl">
+                  {t(
+                    'Compare the theoretical closing stock (opening + purchases − POS recipe sales) against the actual physical counts manually recorded by staff. Identify shrinkage, prevent stockouts, and reconcile your inventory ledger.',
+                    'مقارنة الرصيد الدفتري للنظام (الافتتاحي + المشتريات − مبيعات نقاط البيع) مع الجرد الفعلي المدخل يدوياً من قبل موظفي الفرع لكشف الهدر والتسوية.'
+                  )}
+                </p>
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>
+                    {t('Batch Expiry Dates flow directly from supplier Purchases and are assigned automatically.', 'تواريخ انتهاء الصلاحية تُسجل من فواتير المشتريات وترتبط مباشرة بالأصناف.')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
+              {Object.keys(inlineActualCounts).length > 0 && (
+                <button
+                  onClick={handleSaveAllInlineCounts}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{t(`Save All (${Object.keys(inlineActualCounts).length}) Counts`, `حفظ كافة التعديلات (${Object.keys(inlineActualCounts).length})`)}</span>
+                </button>
+              )}
+
+              {itemsWithVariance.length > 0 && (
+                <button
+                  onClick={handleReconcileAllDiscrepancies}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-neutral-900 text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <FileCheck className="w-4 h-4" />
+                  <span>{t('Accept & Align All to Physical', 'تسوية النظام ليطابق الفعلي')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 4 Comparative Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-zinc-200/80 dark:border-neutral-800 shadow-xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                {t('Theoretical System Valuation', 'قيمة رصيد النظام الدفتري')}
+              </span>
+              <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-1 tabular-nums">
+                {formatCurrency(totalSystemValue)}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1">
+                {t('Calculated by POS & Purchases', 'محسوبة عبر المبيعات والمشتريات')}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-900/60 shadow-xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                {t('Actual Physical Count Valuation', 'قيمة الجرد الفعلي بالمستودع')}
+              </span>
+              <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-300 mt-1 tabular-nums">
+                {formatCurrency(totalActualPhysicalValue)}
+              </div>
+              <p className="text-[11px] text-blue-600/80 mt-1">
+                {t('Based on staff manual stocktake', 'بناءً على العد اليدوي للموظفين')}
+              </p>
+            </div>
+
+            <div className={`rounded-2xl p-4 border shadow-xs ${
+              totalVarianceLossQar < 0
+                ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50'
+                : totalVarianceLossQar > 0
+                ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50'
+                : 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50'
+            }`}>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                {t('Net Discrepancy Amount (Variance)', 'صافي الفرق المالي (انحراف)')}
+              </span>
+              <div className={`text-xl font-bold font-mono mt-1 tabular-nums ${
+                totalVarianceLossQar < 0
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : totalVarianceLossQar > 0
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-emerald-600 dark:text-emerald-400'
+              }`}>
+                {totalVarianceLossQar === 0 ? '0.00 QAR' : formatCurrency(totalVarianceLossQar)}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 font-medium">
+                {totalVarianceLossQar < 0
+                  ? t('Net shrinkage deficit from system', 'عجز في المخزون عن رصيد النظام')
+                  : totalVarianceLossQar > 0
+                  ? t('Net surplus over system', 'فائض زيادة عن رصيد النظام')
+                  : t('Zero discrepancy - 100% accurate', 'مطابق ١٠٠٪ دون أي فروقات')}
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-zinc-200/80 dark:border-neutral-800 shadow-xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                {t('Reconciliation Status', 'حالة مطابقة الأصناف')}
+              </span>
+              <div className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
+                {matchedItems.length} / {inventory.length}
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-[11px]">
+                <span className="text-rose-600 font-bold">{shortageItems.length} {t('short', 'عجز')}</span>
+                <span>•</span>
+                <span className="text-amber-600 font-bold">{surplusItems.length} {t('surplus', 'فائض')}</span>
+                <span>•</span>
+                <span className="text-emerald-600 font-bold">{matchedItems.length} {t('matched', 'مطابق')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Table Container & Filter */}
+          <div className="bg-white dark:bg-neutral-900 border border-zinc-200/80 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-zinc-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  {t('Filter Comparison:', 'تصفية المقارنة:')}
+                </span>
+
+                <button
+                  onClick={() => setComparisonFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    comparisonFilter === 'all'
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-neutral-900'
+                      : 'bg-zinc-100 dark:bg-neutral-800 text-zinc-600 dark:text-neutral-300 hover:bg-zinc-200'
+                  }`}
+                >
+                  {t('All Items', 'كافة الأصناف')} ({inventory.length})
+                </button>
+
+                <button
+                  onClick={() => setComparisonFilter('variance')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    comparisonFilter === 'variance'
+                      ? 'bg-amber-500 text-neutral-950 font-bold'
+                      : 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{t('Discrepancies Only', 'الفروقات فقط')} ({itemsWithVariance.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setComparisonFilter('matched')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    comparisonFilter === 'matched'
+                      ? 'bg-emerald-600 text-white font-bold'
+                      : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{t('Matched Only', 'المطابقة فقط')} ({matchedItems.length})</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-neutral-500 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span>{t('Type in the Actual Count column to update physical counts inline', 'يمكنك كتابة الرصيد الفعلي مباشرة في الجدول للتحديث السريع')}</span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-zinc-50 dark:bg-neutral-800/60 border-b border-zinc-200 dark:border-neutral-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                    <th className="py-3 px-4">{t('Product / Ingredient', 'الصنف / المادة')}</th>
+                    <th className="py-3 px-3">{t('Location', 'المستودع')}</th>
+                    <th className="py-3 px-3 text-right">{t('Unit Cost', 'سعر الوحدة')}</th>
+                    <th className="py-3 px-3 text-right bg-zinc-100/60 dark:bg-neutral-800/80 text-neutral-700 dark:text-neutral-200">
+                      {t('System Stock (Expected)', 'رصيد النظام (الدفتري)')}
+                    </th>
+                    <th className="py-3 px-3 text-right bg-blue-50/70 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200">
+                      {t('Actual Closing Count (Physical)', 'الجرد الفعلي (اليدوي)')}
+                    </th>
+                    <th className="py-3 px-3 text-right">{t('Variance (Units)', 'فرق الكمية')}</th>
+                    <th className="py-3 px-3 text-right">{t('Variance Value (QAR)', 'القيمة المالية للفرق')}</th>
+                    <th className="py-3 px-3 text-center">{t('Status', 'الحالة')}</th>
+                    <th className="py-3 px-4 text-center">{t('Reconciliation Actions', 'إجراءات التسوية')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-neutral-800 font-medium">
+                  {(() => {
+                    const comparisonItems = inventory.filter((item) => {
+                      const actual = inlineActualCounts[item.id] !== undefined
+                        ? parseFloat(inlineActualCounts[item.id])
+                        : item.actualClosingStock !== undefined
+                        ? item.actualClosingStock
+                        : item.closingStock;
+                      const diff = actual - item.closingStock;
+                      const hasDiff = Math.abs(diff) > 0.01;
+
+                      const matchesFilter =
+                        comparisonFilter === 'all' ||
+                        (comparisonFilter === 'variance' && hasDiff) ||
+                        (comparisonFilter === 'matched' && !hasDiff);
+
+                      const matchesSearch =
+                        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        item.nameAr.includes(searchQuery) ||
+                        item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+
+                      const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+                      const matchesLocation = selectedLocation === 'all' || item.location === selectedLocation;
+
+                      return matchesFilter && matchesSearch && matchesCategory && matchesLocation;
+                    });
+
+                    if (comparisonItems.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-zinc-400">
+                            <Scale className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                            <p>{t('No items match the comparison filter criteria.', 'لا توجد أصناف مطابقة للتصفية.')}</p>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return comparisonItems.map((item) => {
+                      const currentVal = inlineActualCounts[item.id] !== undefined
+                        ? inlineActualCounts[item.id]
+                        : (item.actualClosingStock !== undefined ? item.actualClosingStock : item.closingStock).toString();
+                      const actual = parseFloat(currentVal);
+                      const safeActual = isNaN(actual) ? item.closingStock : actual;
+                      const diff = safeActual - item.closingStock;
+                      const diffValue = diff * item.unitCost;
+                      const isMatched = Math.abs(diff) <= 0.01;
+                      const isShort = diff < -0.01;
+                      const isSurplus = diff > 0.01;
+                      const branch = BRANCHES.find((b) => b.id === item.location);
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className={`transition-colors ${
+                            isShort
+                              ? 'bg-rose-50/30 dark:bg-rose-950/15 hover:bg-rose-50/50'
+                              : isSurplus
+                              ? 'bg-amber-50/20 dark:bg-amber-950/10 hover:bg-amber-50/40'
+                              : 'hover:bg-zinc-50/80 dark:hover:bg-neutral-800/40'
+                          }`}
+                        >
+                          {/* Item / Ingredient */}
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-neutral-900 dark:text-neutral-100">
+                              {language === 'ar' ? item.nameAr : item.name}
+                            </div>
+                            <div className="text-[11px] text-zinc-400 mt-0.5">
+                              {item.category} · {item.supplier}
+                            </div>
+                          </td>
+
+                          {/* Location */}
+                          <td className="py-3.5 px-3 text-neutral-600 dark:text-neutral-400">
+                            {branch?.name}
+                          </td>
+
+                          {/* Unit Cost */}
+                          <td className="py-3.5 px-3 text-right font-mono text-neutral-600 dark:text-neutral-400">
+                            {formatCurrency(item.unitCost)}
+                          </td>
+
+                          {/* Theoretical System Stock */}
+                          <td className="py-3.5 px-3 text-right bg-zinc-100/40 dark:bg-neutral-800/50">
+                            <span className="font-mono font-bold text-sm text-neutral-900 dark:text-neutral-100 block">
+                              {item.closingStock} {item.unit}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block">
+                              {t('System Book Stock', 'رصيد دفتري')}
+                            </span>
+                          </td>
+
+                          {/* Actual Closing Count (Inline Input) */}
+                          <td className="py-3.5 px-3 text-right bg-blue-50/40 dark:bg-blue-950/20">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={currentVal}
+                                onChange={(e) => handleUpdateInlineActual(item.id, e.target.value)}
+                                className={`w-24 p-1.5 text-xs font-mono font-bold text-right rounded-xl border outline-none transition-all ${
+                                  inlineActualCounts[item.id] !== undefined
+                                    ? 'bg-blue-100 dark:bg-blue-900/60 border-blue-400 text-blue-900 dark:text-blue-100 ring-2 ring-blue-300'
+                                    : 'bg-white dark:bg-neutral-800 border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100'
+                                }`}
+                              />
+                              <span className="text-[11px] font-semibold text-neutral-400 shrink-0">
+                                {item.unit}
+                              </span>
+
+                              {inlineActualCounts[item.id] !== undefined && (
+                                <button
+                                  onClick={() => handleSaveSingleInline(item)}
+                                  className="p-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors cursor-pointer"
+                                  title={t('Save this count', 'حفظ هذا الجرد')}
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 block mt-0.5 text-right font-medium">
+                              {item.actualClosingStock !== undefined
+                                ? (item.lastCountDate ? `${t('Counted', 'تم الجرد')}: ${item.lastCountDate}` : t('Manual Count', 'جرد يدوي'))
+                                : t('Uncounted (Matches system)', 'لم يُجرد بعد')}
+                            </span>
+                          </td>
+
+                          {/* Variance in Units */}
+                          <td className="py-3.5 px-3 text-right font-mono">
+                            {isMatched ? (
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-xs">
+                                0.0 {item.unit}
+                              </span>
+                            ) : isShort ? (
+                              <div>
+                                <span className="font-bold text-rose-600 dark:text-rose-400 text-xs block">
+                                  {diff.toFixed(1)} {item.unit}
+                                </span>
+                                <span className="text-[10px] text-rose-500 font-semibold">
+                                  {t('Shortage', 'عجز')}
+                                </span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-bold text-amber-600 dark:text-amber-400 text-xs block">
+                                  +{diff.toFixed(1)} {item.unit}
+                                </span>
+                                <span className="text-[10px] text-amber-600 font-semibold">
+                                  {t('Surplus', 'فائض')}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Variance Value in QAR */}
+                          <td className="py-3.5 px-3 text-right font-mono">
+                            <span className={`font-bold text-xs ${
+                              isMatched
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isShort
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`}>
+                              {diffValue === 0 ? '0.00 QAR' : formatCurrency(diffValue)}
+                            </span>
+                          </td>
+
+                          {/* Status Badge */}
+                          <td className="py-3.5 px-3 text-center">
+                            {isMatched ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{t('MATCHED', 'مطابق')}</span>
+                              </span>
+                            ) : isShort ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>{t('SHORTAGE', 'عجز')}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
+                                <Boxes className="w-3 h-3" />
+                                <span>{t('SURPLUS', 'فائض')}</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Reconciliation Actions */}
+                          <td className="py-3.5 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {!isMatched && (
+                                <button
+                                  onClick={() => handleReconcileSystemToActual(item)}
+                                  className="px-2 py-1 text-[10px] font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-neutral-900 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title={t('Adjust theoretical system stock to match this physical count', 'مطابقة رصيد النظام ليتفق مع الجرد')}
+                                >
+                                  <FileCheck className="w-3 h-3" />
+                                  <span>{t('Align System', 'مطابقة')}</span>
+                                </button>
+                              )}
+
+                              {isShort && (
+                                <button
+                                  onClick={() => handleWriteOffShortage(item)}
+                                  className="px-2 py-1 text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title={t('Write off shortage as damaged / shrinkage loss', 'شطب العجز كبضاعة تالفة')}
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span>{t('Write Off', 'إتلاف')}</span>
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => handleOpenPhysicalCount(item)}
+                                className="p-1.5 text-zinc-500 hover:text-neutral-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                title={t('Open Detailed Count Modal', 'فتح نافذة الجرد التفصيلي')}
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
       {activeTab === 'damaged' && (
         <div className="space-y-4">
           <div className="bg-rose-50/40 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl p-4 flex items-center justify-between">
@@ -854,147 +1527,236 @@ export const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* 4. MODAL: LOG DAMAGED STOCK & CASH LOSS */}
-      {isDamageModalOpen && (
+      {/* 4. MODAL: ENTER ACTUAL PHYSICAL CLOSING COUNT */}
+      {physicalCountItem && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-neutral-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                    {t('Log Damaged Goods / Spoilage / Expired Incident', 'تسجيل واقعة هدر أو بضاعة تالفة أو منتهية')}
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-neutral-400">
-                    {t('Instantly deducts stock and books direct financial loss', 'يخصم المخزون فورياً ويسجل الخسارة المالية')}
-                  </p>
-                </div>
+          <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-neutral-800 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
+                  <Scale className="w-4 h-4 text-blue-600" />
+                  <span>{t('Record Actual Physical Stock Count', 'تسجيل الجرد الفعلي للمادة')}</span>
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  {physicalCountItem.name} ({physicalCountItem.unit})
+                </p>
               </div>
               <button
-                onClick={() => setIsDamageModalOpen(false)}
-                className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-neutral-800 text-zinc-400"
+                onClick={() => setPhysicalCountItem(null)}
+                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-neutral-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitDamage} className="mt-4 space-y-3.5">
+            <form onSubmit={handleSavePhysicalCount} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-zinc-50 dark:bg-neutral-800 text-xs">
+                <div>
+                  <span className="text-zinc-500 block">{t('System Theoretical Stock:', 'رصيد النظام الدفتري:')}</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    {physicalCountItem.closingStock} {physicalCountItem.unit}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">{t('Unit Cost:', 'سعر التكلفة:')}</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    {formatCurrency(physicalCountItem.unitCost)}
+                  </span>
+                </div>
+              </div>
+
               <div>
-                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                  {t('Select Inventory Item', 'اختر المادة من المخزون')} *
+                <label className="text-xs font-bold text-neutral-800 dark:text-neutral-200 block mb-1">
+                  {t('Manually Entered Actual Physical Count', 'الرصيد الفعلي بعد الجرد اليدوي')} ({physicalCountItem.unit}) *
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  required
+                  autoFocus
+                  value={physicalCountVal}
+                  onChange={(e) => setPhysicalCountVal(e.target.value)}
+                  className="w-full p-3 text-lg font-bold font-mono rounded-2xl bg-zinc-50 dark:bg-neutral-800 border border-blue-300 dark:border-blue-700 text-neutral-900 dark:text-neutral-100"
+                />
+              </div>
+
+              {/* Live Variance Calculation Display */}
+              {(() => {
+                const parsed = parseFloat(physicalCountVal);
+                if (isNaN(parsed)) return null;
+                const diff = parsed - physicalCountItem.closingStock;
+                const diffMoney = diff * physicalCountItem.unitCost;
+
+                return (
+                  <div className={`p-3 rounded-2xl border text-xs flex items-center justify-between ${
+                    diff === 0
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : diff < 0
+                      ? 'bg-rose-50 text-rose-800 border-rose-200'
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    <div>
+                      <span className="font-bold block">
+                        {diff === 0
+                          ? t('✓ Exact Match with System', '✓ مطابق تماماً لرصيد النظام')
+                          : diff < 0
+                          ? t('⚠️ Inventory Shortage (Loss)', '⚠️ عجز / نقص في المخزون')
+                          : t('📦 Inventory Surplus (Overage)', '📦 فائض في المخزون')}
+                      </span>
+                      <span className="text-[11px] font-mono">
+                        {diff > 0 ? `+${diff}` : diff} {physicalCountItem.unit}
+                      </span>
+                    </div>
+                    <div className="text-right font-mono font-bold text-sm">
+                      {formatCurrency(diffMoney)}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setPhysicalCountItem(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-zinc-100 dark:bg-neutral-800 text-xs font-bold text-zinc-700 dark:text-neutral-300"
+                >
+                  {t('Cancel', 'إلغاء')}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 text-xs font-bold"
+                >
+                  {t('Save Actual Count', 'حفظ الجرد الفعلي')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL: LOG DAMAGED STOCK & CASH LOSS */}
+      {isDamageModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-neutral-800 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  <span>{t('Record Damaged / Expired Stock', 'تسجيل بضاعة تالفة / هدر')}</span>
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  {t('Reduces inventory stock and logs financial write-off', 'خصم فوري من المخزون وتدوين الخسارة المالية')}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsDamageModalOpen(false)}
+                className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitDamage} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                  {t('Select Inventory Item', 'اختر المادة من المخزون')}
                 </label>
                 <select
                   value={damageItemId}
-                  onChange={(e) => setDamageItemId(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 font-medium"
+                  onChange={(e) => {
+                    setDamageItemId(e.target.value);
+                    const it = inventory.find((i) => i.id === e.target.value);
+                    if (it) {
+                      setDamageBranch(it.location);
+                      setDamageQty(Math.min(it.closingStock, 1));
+                    }
+                  }}
+                  className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                 >
-                  {inventory.map((i) => {
-                    const metrics = getExpiryMetrics(i.expiryDate);
-                    return (
-                      <option key={i.id} value={i.id}>
-                        {i.name} (Stock: {i.closingStock} {i.unit} · Expiry: {i.expiryDate} {metrics.isExpired ? '⚠️ EXPIRED' : ''})
-                      </option>
-                    );
-                  })}
+                  {inventory.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.name} (Stock: {inv.closingStock} {inv.unit} · {formatCurrency(inv.unitCost)}/{inv.unit})
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                    {t('Quantity Damaged / Discarded', 'الكمية التالفة / المستبعدة')} *
+                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                    {t('Quantity Damaged', 'الكمية التالفة')}
                   </label>
                   <input
                     type="number"
-                    min="0.1"
                     step="0.1"
+                    min="0.1"
                     required
                     value={damageQty}
                     onChange={(e) => setDamageQty(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 text-xs font-bold font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
+                    className="w-full p-2.5 text-xs font-mono font-bold rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                    {t('Reason for Damage', 'سبب التلف')}
+                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                    {t('Disposal Reason', 'سبب الإتلاف')}
                   </label>
                   <select
                     value={damageReason}
                     onChange={(e) => setDamageReason(e.target.value as DamageReason)}
                     className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                   >
-                    {damageReasonsList.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
+                    <option value="Spoilage & Expired">{t('Spoilage & Expired', 'انتهاء الصلاحية والتلف')}</option>
+                    <option value="Dropped & Spilled">{t('Dropped & Spilled', 'سقوط وانسكاب')}</option>
+                    <option value="Overcooked & Burned">{t('Overcooked & Burned', 'احتراق أثناء التحضير')}</option>
+                    <option value="Crushed Packaging">{t('Crushed Packaging', 'تلف التغليف')}</option>
+                    <option value="Temperature Abuse">{t('Temperature Abuse', 'خلل تبريد')}</option>
                   </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                    {t('Branch Location', 'الفرع')}
-                  </label>
-                  <select
-                    value={damageBranch}
-                    onChange={(e) => setDamageBranch(e.target.value as BranchId)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  >
-                    {BRANCHES.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                    {t('Logged By (Employee)', 'الموظف المبلغ')}
-                  </label>
-                  <input
-                    type="text"
-                    value={damageLoggedBy}
-                    onChange={(e) => setDamageLoggedBy(e.target.value)}
-                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                  />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-400 block mb-1">
-                  {t('Incident Notes', 'تفاصيل الحادثة')}
+                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                  {t('Branch Location', 'فرع الإتلاف')}
+                </label>
+                <select
+                  value={damageBranch}
+                  onChange={(e) => setDamageBranch(e.target.value as BranchId)}
+                  className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
+                >
+                  {BRANCHES.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                  {t('Incident Notes', 'ملاحظات المحضر')}
                 </label>
                 <textarea
                   rows={2}
                   value={damageNotes}
                   onChange={(e) => setDamageNotes(e.target.value)}
-                  placeholder="e.g. Expired batch disposed safely; or container broken during rush."
+                  placeholder="e.g. Milk jug spoiled due to power outage / Expired batch found during inspection..."
                   className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                 />
               </div>
 
-              {/* Financial Write-Off Preview */}
+              {/* Financial loss preview */}
               {(() => {
                 const item = inventory.find((i) => i.id === damageItemId);
-                const previewLoss = item ? (damageQty * item.unitCost).toFixed(2) : '0';
+                const loss = (item ? item.unitCost : 0) * damageQty;
                 return (
-                  <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-rose-900 dark:text-rose-200 block">
-                        {t('Financial Cost Write-off Loss:', 'قيمة الخسارة المالية المسجلة:')}
-                      </span>
-                      <span className="text-[11px] text-rose-700 dark:text-rose-300">
-                        {damageQty} {item?.unit} @ QAR {item?.unitCost}/{item?.unit}
-                      </span>
-                    </div>
-                    <span className="text-lg font-black text-rose-700 dark:text-rose-400 font-mono">
-                      QAR {previewLoss}
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between text-xs">
+                    <span className="text-rose-700 dark:text-rose-300 font-semibold">
+                      {t('Total Cost Written-Off:', 'إجمالي الخسارة المشطوبة:')}
+                    </span>
+                    <span className="font-mono font-black text-rose-700 dark:text-rose-400 text-sm">
+                      {formatCurrency(loss)}
                     </span>
                   </div>
                 );
@@ -1012,7 +1774,7 @@ export const InventoryView: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
                 >
-                  {t('Confirm & Write Off Loss', 'تأكيد الخصم وتسجيل الخسارة')}
+                  {t('Confirm Write-Off', 'تأكيد الإتلاف والشطب')}
                 </button>
               </div>
             </form>
@@ -1020,16 +1782,18 @@ export const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* 5. MODAL: EDIT STOCK COUNT & EXPIRY DATE */}
+      {/* 6. MODAL: ADJUST / EDIT STOCK & COMPARISON */}
       {adjustingItem && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800">
+          <div className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-neutral-800 mb-4">
               <div>
                 <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                  {t('Edit Stock & Expiry Date', 'تعديل الرصيد وتاريخ الصلاحية')}
+                  {t('Adjust Stock & Reorder Levels', 'تعديل أرصدة المخزون وحدود الطلب')}
                 </h3>
-                <p className="text-xs text-zinc-500">{adjustingItem.name}</p>
+                <p className="text-xs text-zinc-500">
+                  {adjustingItem.name} ({adjustingItem.unit})
+                </p>
               </div>
               <button
                 onClick={() => setAdjustingItem(null)}
@@ -1040,33 +1804,47 @@ export const InventoryView: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                  {t('Physical Count (Closing Stock)', 'الرصيد الفعلي')} ({adjustingItem.unit})
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={newStockVal}
-                  onChange={(e) => setNewStockVal(e.target.value)}
-                  className="w-full p-3 text-lg font-bold font-mono rounded-2xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                />
+              {/* Info Note: Expiry comes from purchases */}
+              <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 text-xs">
+                <span className="font-bold text-blue-900 dark:text-blue-200 block mb-0.5">
+                  {t('Batch Expiry Date (From Purchases):', 'تاريخ الصلاحية (مستخرج من المشتريات):')}
+                </span>
+                <span className="font-mono font-bold text-amber-600 block">
+                  {adjustingItem.expiryDate || t('Not yet recorded in purchases', 'لم يتم تسجيله في المشتريات بعد')}
+                </span>
+                <span className="text-[10px] text-zinc-500 dark:text-neutral-400 mt-1 block">
+                  {t('Expiry dates are assigned automatically when recording supplier purchases.', 'يتم تحديد تواريخ الصلاحية تلقائياً عند تسجيل المشتريات.')}
+                </span>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1 flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-blue-600" />
-                  <span>{t('Expiration Date (Shelf Life)', 'تاريخ انتهاء الصلاحية')}</span>
-                </label>
-                <input
-                  type="date"
-                  value={newExpiryVal}
-                  onChange={(e) => setNewExpiryVal(e.target.value)}
-                  className="w-full p-2.5 text-xs font-bold font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                />
-                <p className="text-[11px] text-zinc-400 mt-1">
-                  {t('Used for automated spoilage warnings and FIFO batch tracking.', 'يُستخدم لتنبيهات الصلاحية ومتابعة الدفعات.')}
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                    {t('System Stock', 'رصيد النظام')} ({adjustingItem.unit})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={newStockVal}
+                    onChange={(e) => setNewStockVal(e.target.value)}
+                    className="w-full p-2.5 text-sm font-bold font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-blue-700 dark:text-blue-300 block mb-1">
+                    {t('Actual Count', 'الجرد الفعلي')} ({adjustingItem.unit})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={newActualStockVal}
+                    onChange={(e) => setNewActualStockVal(e.target.value)}
+                    className="w-full p-2.5 text-sm font-bold font-mono rounded-xl bg-blue-50/40 dark:bg-neutral-800 border border-blue-300 dark:border-blue-700 text-neutral-900 dark:text-neutral-100"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1103,7 +1881,7 @@ export const InventoryView: React.FC = () => {
         </div>
       )}
 
-      {/* 6. MODAL: ADD NEW INVENTORY ITEM */}
+      {/* 7. MODAL: ADD NEW INVENTORY ITEM (WITHOUT FORCED EXPIRY INPUT) */}
       {isAddItemModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-neutral-800 animate-in fade-in zoom-in-95 duration-150">
@@ -1113,7 +1891,7 @@ export const InventoryView: React.FC = () => {
                   {t('Add New Inventory Item / Raw Material', 'إضافة مادة خام جديدة للمخزون')}
                 </h3>
                 <p className="text-xs text-zinc-500">
-                  {t('Record new SKU with expiration date and batch cost', 'تسجيل صنف جديد مع تاريخ الصلاحية وسعر التكلفة')}
+                  {t('Record new SKU without guessing expiry dates (expiry is logged upon Purchase receipt)', 'تسجيل صنف جديد بدون الحاجة لإدخال الصلاحية يدوياً (تُسجل مع المشتريات)')}
                 </p>
               </div>
               <button
@@ -1125,6 +1903,22 @@ export const InventoryView: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateNewItem} className="space-y-3.5">
+              {/* Notice that expiry comes from Purchases */}
+              <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 text-xs flex items-start gap-2">
+                <PackageCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-900 dark:text-amber-200 block">
+                    {t('Expiry Date Will Be Set From Purchases', 'تاريخ الصلاحية يُحدّد تلقائياً عبر المشتريات')}
+                  </span>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                    {t(
+                      'No need to enter expiry date here. When you record ordered goods in Purchases, the batch expiration date will be applied automatically.',
+                      'لا داعي لإدخال تاريخ الصلاحية هنا. عند تسجيل البضاعة الموردة في شاشة المشتريات، سيتم تعيين تاريخ صلاحية الدفعة مباشرة.'
+                    )}
+                  </p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
@@ -1235,20 +2029,6 @@ export const InventoryView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{t('Expiration Date', 'تاريخ الصلاحية')} *</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={newItemExpiry}
-                    onChange={(e) => setNewItemExpiry(e.target.value)}
-                    className="w-full p-2.5 text-xs font-mono rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 font-bold"
-                  />
-                </div>
-
-                <div>
                   <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
                     {t('Storage Location', 'موقع التخزين')}
                   </label>
@@ -1264,18 +2044,18 @@ export const InventoryView: React.FC = () => {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                  {t('Supplier Name', 'اسم المورد')}
-                </label>
-                <input
-                  type="text"
-                  value={newItemSupplier}
-                  onChange={(e) => setNewItemSupplier(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                />
+                <div>
+                  <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
+                    {t('Supplier Name', 'اسم المورد')}
+                  </label>
+                  <input
+                    type="text"
+                    value={newItemSupplier}
+                    onChange={(e) => setNewItemSupplier(e.target.value)}
+                    className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
+                  />
+                </div>
               </div>
 
               <div className="pt-3 border-t border-zinc-100 dark:border-neutral-800 flex justify-end gap-2">

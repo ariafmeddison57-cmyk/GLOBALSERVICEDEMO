@@ -91,7 +91,8 @@ interface AppContextType {
   inventory: InventoryItem[];
   updateInventoryStock: (itemId: string, newClosingStock: number) => void;
   updateInventoryItem: (itemId: string, updates: Partial<InventoryItem>) => void;
-  addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
+  updateActualClosingStock: (itemId: string, actualCount: number) => void;
+  addInventoryItem: (item: Omit<InventoryItem, 'id'> & { id?: string }) => InventoryItem;
   damagedGoods: DamagedInventoryRecord[];
   logDamagedStock: (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => void;
   totalDamagedLoss: number;
@@ -437,13 +438,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  const addInventoryItem = (itemData: Omit<InventoryItem, 'id'>) => {
+  const updateActualClosingStock = (itemId: string, actualCount: number) => {
+    playSound('beep');
+    setInventory((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              actualClosingStock: actualCount,
+              lastCountDate: new Date().toISOString().split('T')[0],
+            }
+          : item
+      )
+    );
+  };
+
+  const addInventoryItem = (itemData: Omit<InventoryItem, 'id'> & { id?: string }): InventoryItem => {
     playSound('success');
     const newItem: InventoryItem = {
       ...itemData,
-      id: `inv-${Date.now()}`,
+      id: itemData.id || `inv-${Date.now()}`,
     };
     setInventory((prev) => [newItem, ...prev]);
+    return newItem;
   };
 
   const logDamagedStock = (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => {
@@ -472,18 +489,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const totalDamagedLoss = damagedGoods.reduce((sum, d) => sum + d.totalFinancialLoss, 0);
 
-  // Purchases operations
+  // Purchases operations (Recording ordered goods with batch expiry tracking)
   const addPurchaseOrder = (poData: Omit<PurchaseOrder, 'id'>) => {
     playSound('success');
     const newPo: PurchaseOrder = {
       ...poData,
-      id: `PO-${9200 + purchases.length + 1}`,
+      id: `PUR-${9200 + purchases.length + 1}`,
     };
     setPurchases((prev) => [newPo, ...prev]);
+
+    // Automatically update inventory item expiry date and supplier from purchase!
+    if (poData.targetInventoryItemId && poData.expiryDate) {
+      setInventory((prev) =>
+        prev.map((item) => {
+          if (item.id === poData.targetInventoryItemId) {
+            const isDelivered = poData.status === 'Delivered';
+            const newPurchased = isDelivered ? item.purchased + poData.quantityTotal : item.purchased;
+            const newClosing = isDelivered ? item.closingStock + poData.quantityTotal : item.closingStock;
+            return {
+              ...item,
+              expiryDate: poData.expiryDate || item.expiryDate,
+              supplier: poData.supplier || item.supplier,
+              batchNumber: poData.batchNumber || item.batchNumber,
+              lastPurchaseRef: poData.invoiceNumber || newPo.id,
+              purchased: newPurchased,
+              closingStock: newClosing,
+            };
+          }
+          return item;
+        })
+      );
+    }
   };
 
   const updatePurchaseOrderStatus = (id: string, status: PurchaseOrder['status'], notes?: string) => {
     playSound(status === 'Rejected' ? 'bump' : 'bell');
+    const existingPo = purchases.find((p) => p.id === id);
+
+    // If marked Delivered and associated with an inventory SKU, sync stock & expiry
+    if (existingPo && status === 'Delivered' && existingPo.status !== 'Delivered' && existingPo.targetInventoryItemId) {
+      setInventory((prev) =>
+        prev.map((item) => {
+          if (item.id === existingPo.targetInventoryItemId) {
+            return {
+              ...item,
+              expiryDate: existingPo.expiryDate || item.expiryDate,
+              batchNumber: existingPo.batchNumber || item.batchNumber,
+              lastPurchaseRef: existingPo.invoiceNumber || existingPo.id,
+              purchased: item.purchased + existingPo.quantityTotal,
+              closingStock: item.closingStock + existingPo.quantityTotal,
+            };
+          }
+          return item;
+        })
+      );
+    }
+
     setPurchases((prev) =>
       prev.map((po) => {
         if (po.id === id) {
@@ -492,7 +553,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ...po,
             status,
             notes: notes !== undefined ? notes : po.notes,
-            ...(status === 'Ordered' || status === 'Delivered' || status === 'In Transit'
+            ...(status === 'Ordered' || status === 'Delivered'
               ? {
                   approvedBy: po.approvedBy || 'Admin Manager',
                   approvalDate: po.approvalDate || now,
@@ -513,7 +574,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updatePurchaseOrder = (id: string, updates: Partial<PurchaseOrder>) => {
     playSound('bell');
     setPurchases((prev) =>
-      prev.map((po) => (po.id === id ? { ...po, ...updates } : po))
+      prev.map((po) => {
+        if (po.id === id) {
+          const updatedPo = { ...po, ...updates };
+          if (updatedPo.targetInventoryItemId && (updates.expiryDate || updates.batchNumber)) {
+            setInventory((prevInv) =>
+              prevInv.map((item) => {
+                if (item.id === updatedPo.targetInventoryItemId) {
+                  return {
+                    ...item,
+                    expiryDate: updates.expiryDate || item.expiryDate,
+                    batchNumber: updates.batchNumber || item.batchNumber,
+                  };
+                }
+                return item;
+              })
+            );
+          }
+          return updatedPo;
+        }
+        return po;
+      })
     );
   };
 
@@ -659,6 +740,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         inventory,
         updateInventoryStock,
         updateInventoryItem,
+        updateActualClosingStock,
         addInventoryItem,
         damagedGoods,
         logDamagedStock,

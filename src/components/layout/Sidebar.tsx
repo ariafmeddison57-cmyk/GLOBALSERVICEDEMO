@@ -99,7 +99,7 @@ export const Sidebar: React.FC = () => {
     },
     {
       id: 'purchases',
-      label: 'Purchaces',
+      label: 'Purchases',
       labelAr: 'المشتريات والتوريد',
       icon: Truck,
     },

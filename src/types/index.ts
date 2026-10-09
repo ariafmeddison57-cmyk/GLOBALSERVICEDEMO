@@ -140,11 +140,15 @@ export interface InventoryItem {
   openingStock: number;
   purchased: number;
   used: number;
-  closingStock: number;
+  closingStock: number; // System calculated theoretical stock
+  actualClosingStock?: number; // Actual physical count manually entered by staff
+  lastCountDate?: string;
   minReorderLevel: number;
   unitCost: number; // QAR
   location: BranchId;
-  expiryDate: string; // YYYY-MM-DD
+  expiryDate: string; // YYYY-MM-DD (derived from received purchases)
+  lastPurchaseRef?: string; // Purchase voucher or invoice reference
+  batchNumber?: string;
   supplier: string;
 }
 
@@ -211,9 +215,12 @@ export interface PurchaseOrder {
   expectedDelivery: string;
   quantityTotal: number;
   amount: number; // QAR
-  status: 'Delivered' | 'In Transit' | 'Pending Approval' | 'Ordered' | 'Rejected';
+  status: 'Delivered' | 'Pending Approval' | 'Ordered' | 'Rejected';
   itemsSummary: string;
   branchDestination: BranchId;
+  targetInventoryItemId?: string; // Associated inventory item SKU
+  expiryDate?: string; // Batch expiry date recorded at time of purchase
+  batchNumber?: string; // Supplier batch / lot number
   approvedBy?: string;
   approvalDate?: string;
   notes?: string;

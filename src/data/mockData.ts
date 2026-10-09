@@ -181,6 +181,8 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     purchased: 0,
     used: 13,
     closingStock: 12,
+    actualClosingStock: 10, // Physical count discrepancy: 2L short
+    lastCountDate: '2026-10-09',
     minReorderLevel: 8,
     unitCost: 22,
     location: 'west-walk',
@@ -198,6 +200,8 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     purchased: 60,
     used: 34.5,
     closingStock: 145.5,
+    actualClosingStock: 145.5, // Matches perfectly
+    lastCountDate: '2026-10-09',
     minReorderLevel: 40,
     unitCost: 85,
     location: 'main-store',
@@ -215,6 +219,8 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     purchased: 100,
     used: 52.0,
     closingStock: 228.0,
+    actualClosingStock: 225.0, // Physical count discrepancy: 3kg short
+    lastCountDate: '2026-10-09',
     minReorderLevel: 50,
     unitCost: 65,
     location: 'west-walk',
@@ -232,6 +238,8 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
     purchased: 300,
     used: 285.0,
     closingStock: 465.0,
+    actualClosingStock: 460.0, // Discrepancy: 5L short
+    lastCountDate: '2026-10-09',
     minReorderLevel: 150,
     unitCost: 6.5,
     location: 'west-walk',
@@ -1468,6 +1476,9 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     status: 'Delivered',
     itemsSummary: '60kg Ethiopian Yirgacheffe, 100kg Espresso Arabica',
     branchDestination: 'main-store',
+    targetInventoryItemId: 'inv-beans-ethiopia',
+    expiryDate: '2026-12-15',
+    batchNumber: 'LOT-ETH-2026-88',
   },
   {
     id: 'PO-9202',
@@ -1477,9 +1488,12 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     expectedDelivery: '2026-10-08',
     quantityTotal: 300,
     amount: 1950,
-    status: 'In Transit',
+    status: 'Delivered',
     itemsSummary: '300L Fresh Full-Cream Cow Milk 2L Bottles',
     branchDestination: 'west-walk',
+    targetInventoryItemId: 'inv-milk-fresh',
+    expiryDate: '2026-10-22',
+    batchNumber: 'BAL-B771',
   },
   {
     id: 'PO-9203',
@@ -1492,6 +1506,9 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     status: 'Delivered',
     itemsSummary: '500kg Belgian Grade-A Cut Fries Skin-on',
     branchDestination: 'west-walk',
+    targetInventoryItemId: 'inv-fries-belgian',
+    expiryDate: '2027-08-30',
+    batchNumber: 'BGF-4401',
   },
   {
     id: 'PO-9204',
@@ -1501,9 +1518,12 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     expectedDelivery: '2026-10-10',
     quantityTotal: 190,
     amount: 7200,
-    status: 'In Transit',
+    status: 'Ordered',
     itemsSummary: '120kg Tapioca Pearls, 60kg Brown Sugar, 10kg Matcha',
     branchDestination: 'west-walk',
+    targetInventoryItemId: 'inv-tapioca-pearls',
+    expiryDate: '2027-06-15',
+    batchNumber: 'FEB-TK-90',
   },
   {
     id: 'PO-9205',
@@ -1516,6 +1536,9 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     status: 'Pending Approval',
     itemsSummary: '80kg Australian Wagyu MB5 Ground Chilled Beef',
     branchDestination: 'west-walk',
+    targetInventoryItemId: 'inv-wagyu-beef',
+    expiryDate: '2026-10-28',
+    batchNumber: 'MMQ-WGY-09',
   },
   {
     id: 'PO-9206',
@@ -1528,6 +1551,9 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
     status: 'Delivered',
     itemsSummary: 'Custom embossed hot cups, cold cups, fries boxes & pastry packaging',
     branchDestination: 'main-store',
+    targetInventoryItemId: 'inv-packaging-hotcup',
+    expiryDate: '2028-12-31',
+    batchNumber: 'DPP-CUP-26',
   },
 ];
 
