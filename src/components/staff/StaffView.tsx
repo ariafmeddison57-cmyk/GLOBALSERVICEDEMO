@@ -86,6 +86,13 @@ export const StaffView: React.FC = () => {
     return { label: t('Valid', 'ساري'), color: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60' };
   };
 
+  const getFoodHandlingStatus = (expiryDate: string) => {
+    const diffDays = Math.ceil((new Date(expiryDate).getTime() - now) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return { label: t('Expired', 'منتهي'), color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/60' };
+    if (diffDays <= 30) return { label: `${diffDays}d ` + t('left', 'يوم متبقي'), color: 'text-amber-700 bg-amber-50 dark:bg-amber-950/60 font-bold' };
+    return { label: t('Valid', 'ساري'), color: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60' };
+  };
+
   const handleOpenAddModal = () => {
     setEmployeeModalMode('add');
     setEditingEmployeeId(null);
@@ -176,8 +183,8 @@ export const StaffView: React.FC = () => {
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
             {t(
-              'Monitoring baristas, chefs, store supervisors, Qatar IDs (QID), and Baladiya Food Safety Health cards.',
-              'متابعة الباريستا، الطهاة، مشرفي الفروع، بطاقات الإقامة القطرية وشهادات سلامة الغذاء البلدية.'
+              'Monitoring baristas, chefs, store supervisors, Qatar IDs (QID), and Baladiya Food Handling Certificates.',
+              'متابعة الباريستا، الطهاة، مشرفي الفروع، بطاقات الإقامة القطرية وشهادات تداول الأغذية البلدية.'
             )}
           </p>
         </div>
@@ -228,7 +235,7 @@ export const StaffView: React.FC = () => {
 
         <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
-            <span className="text-xs font-medium">{t('Expiring Certificates', 'شهادات صحية تنتهي')}</span>
+            <span className="text-xs font-medium">{t('Expiring Food Handling Certs', 'شهادات تداول الأغذية المنتهية')}</span>
             <FileCheck className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl font-bold font-mono text-amber-600 tabular-nums">
@@ -322,7 +329,7 @@ export const StaffView: React.FC = () => {
                 <th className="py-3 px-4">{t('Assigned Branch', 'الفرع')}</th>
                 <th className="py-3 px-4">{t('Qatar ID (QID)', 'الرقم الشخصي')}</th>
                 <th className="py-3 px-3">{t('QID Expiry', 'انتهاء الإقامة')}</th>
-                <th className="py-3 px-3">{t('Food Safety Card', 'شهادة البلدية')}</th>
+                <th className="py-3 px-3">{t('Food Handling Certificate', 'شهادة تداول الأغذية')}</th>
                 <th className="py-3 px-4 text-center">{t('Duty Status', 'حالة المناوبة')}</th>
                 <th className="py-3 px-3 text-right">{t('Actions', 'إجراءات')}</th>
               </tr>
@@ -362,7 +369,14 @@ export const StaffView: React.FC = () => {
 
                     <td className="py-3.5 px-3 whitespace-nowrap">
                       <div className="font-mono text-xs">{emp.foodHandlingExpiry}</div>
-                      <span className="text-[10px] text-neutral-500">MOPH Qatar</span>
+                      {(() => {
+                        const fhStat = getFoodHandlingStatus(emp.foodHandlingExpiry);
+                        return (
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded mt-0.5 inline-block ${fhStat.color}`}>
+                            {fhStat.label}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     <td className="py-3.5 px-4 text-center">
@@ -543,7 +557,7 @@ export const StaffView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
-                    {t('Food Safety Card Expiry', 'تاريخ بطاقة سلامة الغذاء')} *
+                    {t('Food Handling Certificate Expiry', 'تاريخ انتهاء شهادة تداول الأغذية')} *
                   </label>
                   <input
                     type="date"

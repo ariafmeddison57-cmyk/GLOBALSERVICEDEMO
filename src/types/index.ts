@@ -173,13 +173,16 @@ export interface DamagedInventoryRecord {
 }
 
 export type ExpenseCategory = 
+  | 'Transport & Delivery Fuel'
+  | 'Machine & Equipment Repairs'
+  | 'Purchases Without Invoice (Cash)'
+  | 'Small Things & Daily Supplies'
   | 'Utilities (Kahramaa)'
-  | 'Rent & Property'
   | 'Cleaning & Sanitation'
   | 'Maintenance & Repairs'
-  | 'Marketing & Ads'
   | 'Stationery & POS Paper'
-  | 'Transport & Delivery Fuel'
+  | 'Marketing & Ads'
+  | 'Rent & Property'
   | 'Staff Uniforms'
   | 'Licenses & Government';
 
@@ -196,6 +199,7 @@ export interface ExpenseRecord {
   paymentMethod: 'card' | 'bank-transfer' | 'petty-cash';
   receiptRef: string;
   loggedBy: string;
+  hasInvoice?: boolean; // True if official invoice, False for cash/no-invoice purchase
   notes?: string;
 }
 
