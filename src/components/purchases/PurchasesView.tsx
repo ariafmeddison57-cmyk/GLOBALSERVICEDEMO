@@ -186,45 +186,82 @@ export const PurchasesView: React.FC = () => {
         createdAsNewBatch = true;
       }
     } else if (itemEntryMode === 'manual' && autoAddToInventory) {
-      // Check if item with this name already exists in inventory with a different expiry
-      const matchingExisting = inventory.find(
-        (i) => i.name.toLowerCase().trim() === manualItemName.toLowerCase().trim()
+      const baseName = (name: string) =>
+        name
+          .replace(/\s*\(Batch.*?\)/gi, '')
+          .replace(/\s*\(Exp:.*?\)/gi, '')
+          .replace(/\s*\[Batch.*?\]/gi, '')
+          .trim()
+          .toLowerCase();
+      const matchingItems = inventory.filter(
+        (item) =>
+          baseName(item.name) === baseName(manualItemName) &&
+          item.location === newDestination &&
+          item.category === manualCategory &&
+          item.unit === manualUnit
+      );
+      const sameExpiryBatch = matchingItems.find((item) => item.expiryDate === newExpiryDate);
+      const differentExpiryBatch = matchingItems.find(
+        (item) => item.closingStock > 0 && item.expiryDate !== newExpiryDate
       );
 
-      let finalName = manualItemName.trim();
-      if (
-        matchingExisting &&
-        matchingExisting.expiryDate &&
-        newExpiryDate &&
-        matchingExisting.expiryDate !== newExpiryDate
-      ) {
+      if (sameExpiryBatch) {
+        // Reuse the matching batch so repeated receipts increase its quantity.
+        assignedInventoryId = sameExpiryBatch.id;
+      } else if (differentExpiryBatch) {
         const batchSuffix = newBatchNumber.trim()
           ? `(Batch ${newBatchNumber.trim()} • Exp: ${newExpiryDate})`
           : `(Exp: ${newExpiryDate})`;
-        finalName = `${manualItemName.trim()} ${batchSuffix}`;
+        const cleanBaseName = manualItemName.trim();
+        const finalName = `${cleanBaseName} ${batchSuffix}`;
         createdAsNewBatch = true;
-      }
-
-      const newItem = addInventoryItem({
-        name: finalName,
-        nameAr: finalName,
-        brandIds: ['kahwatee', 'kinda'],
-        category: manualCategory,
-        unit: manualUnit,
-        openingStock: 0,
-        purchased: 0,
-        used: 0,
-        closingStock: 0,
-        actualClosingStock: undefined,
-        minReorderLevel: Math.max(5, Math.round(qty * 0.2)),
-        unitCost: unitPrice,
-        location: newDestination,
-        expiryDate: newExpiryDate,
-        batchNumber: newBatchNumber.trim() || undefined,
-        supplier: newSupplier.trim() || 'Baladna Food Industries',
-        lastPurchaseRef: newInvoiceNumber.trim() || undefined,
-      });
-      if (newItem && newItem.id) {
+        const existingNamedBatch = inventory.find(
+          (item) => item.name.toLowerCase() === finalName.toLowerCase()
+        );
+        if (existingNamedBatch) {
+          assignedInventoryId = existingNamedBatch.id;
+        } else {
+          const newItem = addInventoryItem({
+            name: finalName,
+            nameAr: finalName,
+            brandIds: ['kahwatee', 'kinda'],
+            category: manualCategory,
+            unit: manualUnit,
+            openingStock: 0,
+            purchased: 0,
+            used: 0,
+            closingStock: 0,
+            actualClosingStock: undefined,
+            minReorderLevel: Math.max(5, Math.round(qty * 0.2)),
+            unitCost: unitPrice,
+            location: newDestination,
+            expiryDate: newExpiryDate,
+            batchNumber: newBatchNumber.trim() || undefined,
+            supplier: newSupplier.trim() || 'Baladna Food Industries',
+            lastPurchaseRef: newInvoiceNumber.trim() || undefined,
+          });
+          assignedInventoryId = newItem.id;
+        }
+      } else {
+        const newItem = addInventoryItem({
+          name: manualItemName.trim(),
+          nameAr: manualItemName.trim(),
+          brandIds: ['kahwatee', 'kinda'],
+          category: manualCategory,
+          unit: manualUnit,
+          openingStock: 0,
+          purchased: 0,
+          used: 0,
+          closingStock: 0,
+          actualClosingStock: undefined,
+          minReorderLevel: Math.max(5, Math.round(qty * 0.2)),
+          unitCost: unitPrice,
+          location: newDestination,
+          expiryDate: newExpiryDate,
+          batchNumber: newBatchNumber.trim() || undefined,
+          supplier: newSupplier.trim() || 'Baladna Food Industries',
+          lastPurchaseRef: newInvoiceNumber.trim() || undefined,
+        });
         assignedInventoryId = newItem.id;
       }
     }
