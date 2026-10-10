@@ -151,7 +151,7 @@ export const InventoryView: React.FC = () => {
       (stockStatusFilter === 'normal' && item.closingStock > item.minReorderLevel);
 
     return matchesSearch && matchesCategory && matchesLocation && matchesExpiry && matchesStock;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   // KPI Computations
   const totalSystemValue = inventory.reduce((sum, item) => sum + item.closingStock * item.unitCost, 0);
@@ -1168,7 +1168,7 @@ export const InventoryView: React.FC = () => {
                       const matchesLocation = selectedLocation === 'all' || item.location === selectedLocation;
 
                       return matchesFilter && matchesSearch && matchesCategory && matchesLocation;
-                    });
+                    }).sort((a, b) => a.name.localeCompare(b.name));
 
                     if (comparisonItems.length === 0) {
                       return (

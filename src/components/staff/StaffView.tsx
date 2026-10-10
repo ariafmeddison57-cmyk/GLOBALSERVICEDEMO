@@ -449,34 +449,21 @@ export const StaffView: React.FC = () => {
 
             {/* Modal Form */}
             <form onSubmit={handleSaveEmployee} className="space-y-4 mt-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
-                    {t('Full Name (English)', 'الاسم الكامل (إنجليزي)')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Tariq Al-Nuaimi"
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
-                    {t('Full Name (Arabic)', 'الاسم الكامل (عربي)')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formNameAr}
-                    onChange={(e) => setFormNameAr(e.target.value)}
-                    placeholder="مثال: طارق النعيمي"
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-600"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
+                  {t('Full Name', 'الاسم الكامل')} *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formName}
+                  onChange={(e) => {
+                    setFormName(e.target.value);
+                    setFormNameAr(e.target.value);
+                  }}
+                  placeholder="e.g. Tariq Al-Nuaimi"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-600"
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

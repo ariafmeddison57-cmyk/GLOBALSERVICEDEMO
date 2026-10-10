@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { BRANDS, POS_UNITS } from '../../data/mockData';
-import { Product, PosUnitId, BrandId, RecipeIngredient } from '../../types';
+import { Product, PosUnitId, BrandId, RecipeIngredient, MeasurementUnit } from '../../types';
 
 interface PresetImage {
   name: string;
@@ -229,28 +229,54 @@ export const MenuRecipesView: React.FC = () => {
     setFormIngredients([...formIngredients, newIng]);
   };
 
-  // Update ingredient in row
+  const calculatePortionCost = (
+    rawItem: any,
+    portionQty: number,
+    portionUnit: MeasurementUnit
+  ): number => {
+    if (!rawItem || portionQty <= 0) return 0;
+    let multiplier = 1;
+    if (rawItem.unit === 'kg' && portionUnit === 'g') multiplier = 0.001;
+    else if (rawItem.unit === 'g' && portionUnit === 'kg') multiplier = 1000;
+    else if (rawItem.unit === 'L' && portionUnit === 'ml') multiplier = 0.001;
+    else if (rawItem.unit === 'ml' && portionUnit === 'L') multiplier = 1000;
+    else if (rawItem.unit === 'kg' && portionUnit === 'oz') multiplier = 0.02835;
+    else if (rawItem.unit === 'L' && portionUnit === 'oz') multiplier = 0.02957;
+    return parseFloat((rawItem.unitCost * portionQty * multiplier).toFixed(2));
+  };
+
+  // Update ingredient in row (with editable unit, portion qty, and item)
   const handleUpdateIngredientRow = (
     index: number,
-    field: 'inventoryItemId' | 'portionQty',
+    field: 'inventoryItemId' | 'portionQty' | 'unit',
     val: string | number
   ) => {
     const updated = [...formIngredients];
+    const currentRow = updated[index];
+    const rawItem = inventory.find(
+      (i) => i.id === (field === 'inventoryItemId' ? val : currentRow.inventoryItemId)
+    );
+
     if (field === 'inventoryItemId') {
-      const selectedRaw = inventory.find((i) => i.id === val);
-      if (selectedRaw) {
-        updated[index].inventoryItemId = selectedRaw.id;
-        updated[index].name = selectedRaw.name;
-        updated[index].unit = selectedRaw.unit as any;
-        updated[index].unitCost = selectedRaw.unitCost;
-        updated[index].costPerPortion = parseFloat(
-          (selectedRaw.unitCost * updated[index].portionQty).toFixed(2)
+      if (rawItem) {
+        currentRow.inventoryItemId = rawItem.id;
+        currentRow.name = rawItem.name;
+        currentRow.unit = rawItem.unit;
+        currentRow.unitCost = rawItem.unitCost;
+        currentRow.costPerPortion = calculatePortionCost(
+          rawItem,
+          currentRow.portionQty,
+          rawItem.unit
         );
       }
     } else if (field === 'portionQty') {
       const qty = parseFloat(val.toString()) || 0;
-      updated[index].portionQty = qty;
-      updated[index].costPerPortion = parseFloat((updated[index].unitCost * qty).toFixed(2));
+      currentRow.portionQty = qty;
+      currentRow.costPerPortion = calculatePortionCost(rawItem, qty, currentRow.unit);
+    } else if (field === 'unit') {
+      const newUnit = val as MeasurementUnit;
+      currentRow.unit = newUnit;
+      currentRow.costPerPortion = calculatePortionCost(rawItem, currentRow.portionQty, newUnit);
     }
     setFormIngredients(updated);
   };
@@ -652,7 +678,118 @@ export const MenuRecipesView: React.FC = () => {
                               {ing.name}
                             </td>
                             <td className="py-2.5 px-3 font-mono">
-                              {ing.portionQty} {ing.unit}
+                              <div className="inline-flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.001"
+                                  value={ing.portionQty}
+                                  onChange={(e) => {
+                                    const newQty = parseFloat(e.target.value) || 0;
+                                    if (activeProduct.recipe) {
+                                      const updatedIngredients = [...activeProduct.recipe.ingredients];
+                                      const raw = inventory.find((i) => i.id === ing.inventoryItemId);
+                                      let mult = 1;
+                                      if (raw && raw.unit === 'kg' && ing.unit === 'g') mult = 0.001;
+                                      else if (raw && raw.unit === 'g' && ing.unit === 'kg') mult = 1000;
+                                      else if (raw && raw.unit === 'L' && ing.unit === 'ml') mult = 0.001;
+                                      else if (raw && raw.unit === 'ml' && ing.unit === 'L') mult = 1000;
+                                      const newCost = raw
+                                        ? parseFloat((raw.unitCost * newQty * mult).toFixed(2))
+                                        : parseFloat((ing.unitCost * newQty).toFixed(2));
+                                      updatedIngredients[idx] = {
+                                        ...ing,
+                                        portionQty: newQty,
+                                        costPerPortion: newCost,
+                                      };
+                                      const newTotalCost = updatedIngredients.reduce(
+                                        (s, it) => s + it.costPerPortion,
+                                        0
+                                      );
+                                      updateProduct(activeProduct.id, {
+                                        cost: newTotalCost,
+                                        recipe: {
+                                          ...activeProduct.recipe,
+                                          ingredients: updatedIngredients,
+                                          totalFoodCost: newTotalCost,
+                                          grossMarginPercent:
+                                            activeProduct.price > 0
+                                              ? parseFloat(
+                                                  (
+                                                    ((activeProduct.price - newTotalCost) /
+                                                      activeProduct.price) *
+                                                    100
+                                                  ).toFixed(1)
+                                                )
+                                              : 80,
+                                        },
+                                      });
+                                    }
+                                  }}
+                                  className="w-16 text-center font-bold font-mono px-1.5 py-0.5 rounded border border-zinc-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none hover:border-blue-500 focus:border-blue-500 text-xs"
+                                  title="Edit portion quantity"
+                                />
+                                <select
+                                  value={ing.unit}
+                                  onChange={(e) => {
+                                    const newUnit = e.target.value as MeasurementUnit;
+                                    if (activeProduct.recipe) {
+                                      const updatedIngredients = [...activeProduct.recipe.ingredients];
+                                      const raw = inventory.find((i) => i.id === ing.inventoryItemId);
+                                      let mult = 1;
+                                      if (raw && raw.unit === 'kg' && newUnit === 'g') mult = 0.001;
+                                      else if (raw && raw.unit === 'g' && newUnit === 'kg') mult = 1000;
+                                      else if (raw && raw.unit === 'L' && newUnit === 'ml') mult = 0.001;
+                                      else if (raw && raw.unit === 'ml' && newUnit === 'L') mult = 1000;
+                                      const newCost = raw
+                                        ? parseFloat((raw.unitCost * ing.portionQty * mult).toFixed(2))
+                                        : ing.costPerPortion;
+                                      updatedIngredients[idx] = {
+                                        ...ing,
+                                        unit: newUnit,
+                                        costPerPortion: newCost,
+                                      };
+                                      const newTotalCost = updatedIngredients.reduce(
+                                        (s, it) => s + it.costPerPortion,
+                                        0
+                                      );
+                                      updateProduct(activeProduct.id, {
+                                        cost: newTotalCost,
+                                        recipe: {
+                                          ...activeProduct.recipe,
+                                          ingredients: updatedIngredients,
+                                          totalFoodCost: newTotalCost,
+                                          grossMarginPercent:
+                                            activeProduct.price > 0
+                                              ? parseFloat(
+                                                  (
+                                                    ((activeProduct.price - newTotalCost) /
+                                                      activeProduct.price) *
+                                                    100
+                                                  ).toFixed(1)
+                                                )
+                                              : 80,
+                                        },
+                                      });
+                                    }
+                                  }}
+                                  className="inline-block text-[11px] font-bold px-1.5 py-0.5 rounded border border-zinc-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none cursor-pointer hover:border-blue-500"
+                                  title="Editable portion unit"
+                                >
+                                  <option value="g">g</option>
+                                  <option value="ml">ml</option>
+                                  <option value="kg">kg</option>
+                                  <option value="L">L</option>
+                                  <option value="pcs">pcs</option>
+                                  <option value="box">box</option>
+                                  <option value="carton">carton</option>
+                                  <option value="shot">shot</option>
+                                  <option value="oz">oz</option>
+                                  <option value="cup">cup</option>
+                                  <option value="can">can</option>
+                                  <option value="portion">portion</option>
+                                </select>
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-neutral-200">
                               {formatCurrency(ing.costPerPortion)}
@@ -802,34 +939,21 @@ export const MenuRecipesView: React.FC = () => {
             {/* Modal Form */}
             <form onSubmit={handleSaveDish} className="space-y-6 mt-5">
               {/* Basic Information */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
-                    {t('Dish Name (English)', 'اسم الطبق (إنجليزي)')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Specialty Truffle Burger"
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-blue-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
-                    {t('Dish Name (Arabic)', 'اسم الطبق (عربي)')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formNameAr}
-                    onChange={(e) => setFormNameAr(e.target.value)}
-                    placeholder="مثال: برجر الترفل الفاخر"
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-blue-600"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 dark:text-neutral-300 mb-1">
+                  {t('Dish / Menu Item Name', 'اسم الصنف أو الطبق')} *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formName}
+                  onChange={(e) => {
+                    setFormName(e.target.value);
+                    setFormNameAr(e.target.value);
+                  }}
+                  placeholder="e.g. Specialty Truffle Burger"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-neutral-700 bg-zinc-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none focus:border-blue-600"
+                />
               </div>
 
               {/* Brand, Category & Selling Price */}
@@ -966,27 +1090,36 @@ export const MenuRecipesView: React.FC = () => {
                 </div>
 
                 {/* Ingredients Rows */}
-                <div className="space-y-2 mt-3 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 mt-3 max-h-52 overflow-y-auto pr-1">
+                  <div className="flex items-center text-[10px] font-bold uppercase tracking-wider text-zinc-400 px-2 gap-2">
+                    <div className="flex-1 min-w-[170px]">{t('Ingredient SKU', 'المادة الخام')}</div>
+                    <div className="w-20 text-center">{t('Qty', 'الكمية')}</div>
+                    <div className="w-24 text-center">{t('Unit (Editable)', 'الوحدة')}</div>
+                    <div className="text-right w-20">{t('Cost', 'التكلفة')}</div>
+                    <div className="w-7"></div>
+                  </div>
                   {formIngredients.map((ing, idx) => (
                     <div
                       key={idx}
                       className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-zinc-50 dark:bg-neutral-800/80 border border-zinc-200/80 dark:border-neutral-700"
                     >
-                      <div className="flex-1 min-w-[180px]">
+                      <div className="flex-1 min-w-[170px]">
                         <select
                           value={ing.inventoryItemId}
                           onChange={(e) => handleUpdateIngredientRow(idx, 'inventoryItemId', e.target.value)}
                           className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 outline-none"
                         >
-                          {inventory.map((inv) => (
-                            <option key={inv.id} value={inv.id}>
-                              {inv.name} ({inv.closingStock} {inv.unit} in stock @ QAR {inv.unitCost}/{inv.unit})
-                            </option>
-                          ))}
+                          {[...inventory]
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((inv) => (
+                              <option key={inv.id} value={inv.id}>
+                                {inv.name} ({inv.closingStock} {inv.unit} in stock @ QAR {inv.unitCost}/{inv.unit})
+                              </option>
+                            ))}
                         </select>
                       </div>
 
-                      <div className="w-24">
+                      <div className="w-20">
                         <input
                           type="number"
                           step="0.01"
@@ -997,11 +1130,28 @@ export const MenuRecipesView: React.FC = () => {
                         />
                       </div>
 
-                      <span className="text-xs font-bold text-zinc-500 w-10">
-                        {ing.unit}
-                      </span>
+                      <div className="w-24">
+                        <select
+                          value={ing.unit}
+                          onChange={(e) => handleUpdateIngredientRow(idx, 'unit', e.target.value)}
+                          className="w-full text-xs font-semibold px-2 py-1.5 rounded-lg border border-zinc-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 outline-none cursor-pointer"
+                        >
+                          <option value="g">g (Grams)</option>
+                          <option value="ml">ml (Milliliters)</option>
+                          <option value="kg">kg (Kilograms)</option>
+                          <option value="L">L (Liters)</option>
+                          <option value="pcs">pcs (Pieces)</option>
+                          <option value="box">box</option>
+                          <option value="carton">carton</option>
+                          <option value="shot">shot</option>
+                          <option value="oz">oz</option>
+                          <option value="cup">cup</option>
+                          <option value="can">can</option>
+                          <option value="portion">portion</option>
+                        </select>
+                      </div>
 
-                      <div className="text-right w-24 font-mono text-xs font-bold text-slate-800 dark:text-neutral-200">
+                      <div className="text-right w-20 font-mono text-xs font-bold text-slate-800 dark:text-neutral-200">
                         = {formatCurrency(ing.costPerPortion)}
                       </div>
 

@@ -37,7 +37,7 @@ export interface PosUnit {
   iconName: string;
 }
 
-export type MeasurementUnit = 'kg' | 'g' | 'L' | 'ml' | 'pcs' | 'box' | 'carton';
+export type MeasurementUnit = 'kg' | 'g' | 'L' | 'ml' | 'pcs' | 'box' | 'carton' | 'shot' | 'oz' | 'cup' | 'can' | 'portion' | string;
 
 export interface RecipeIngredient {
   inventoryItemId: string; // Links directly to InventoryItem.id
@@ -100,6 +100,7 @@ export interface Product {
   description: string;
   inStock: boolean;
   calories?: number;
+  portionUnit?: string;
   isPopular?: boolean;
   recipe?: Recipe;
 }

@@ -157,7 +157,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Data states
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [inventory, setInventory] = useState<InventoryItem[]>(INVENTORY_ITEMS);
+  const [inventory, setInventory] = useState<InventoryItem[]>(() =>
+    [...INVENTORY_ITEMS].sort((a, b) => a.name.localeCompare(b.name))
+  );
   const [purchases, setPurchases] = useState<PurchaseOrder[]>(PURCHASE_ORDERS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
   const [damagedGoods, setDamagedGoods] = useState<DamagedInventoryRecord[]>(INITIAL_DAMAGED_GOODS);
@@ -457,9 +459,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     playSound('success');
     const newItem: InventoryItem = {
       ...itemData,
+      nameAr: itemData.nameAr || itemData.name,
       id: itemData.id || `inv-${Date.now()}`,
     };
-    setInventory((prev) => [newItem, ...prev]);
+    setInventory((prev) => [...prev, newItem].sort((a, b) => a.name.localeCompare(b.name)));
     return newItem;
   };
 
@@ -498,12 +501,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setPurchases((prev) => [newPo, ...prev]);
 
-    // Automatically update inventory item expiry date and supplier from purchase!
+    // Automatically update or assign as new inventory item based on expiry!
     if (poData.targetInventoryItemId && poData.expiryDate) {
-      setInventory((prev) =>
-        prev.map((item) => {
+      const isDelivered = poData.status === 'Delivered';
+      setInventory((prev) => {
+        const targetItem = prev.find((i) => i.id === poData.targetInventoryItemId);
+        if (
+          targetItem &&
+          targetItem.expiryDate &&
+          poData.expiryDate &&
+          targetItem.expiryDate !== poData.expiryDate
+        ) {
+          // Different expiry date: Assign as a separate new inventory item!
+          const baseName = targetItem.name
+            .replace(/\s*\(Batch.*?\)/gi, '')
+            .replace(/\s*\(Exp:.*?\)/gi, '')
+            .trim();
+          const batchSuffix = poData.batchNumber
+            ? `(Batch ${poData.batchNumber} • Exp: ${poData.expiryDate})`
+            : `(Exp: ${poData.expiryDate})`;
+          const newBatchName = `${baseName} ${batchSuffix}`;
+
+          const newBatchItem: InventoryItem = {
+            ...targetItem,
+            id: `inv-${Date.now()}`,
+            name: newBatchName,
+            nameAr: newBatchName,
+            expiryDate: poData.expiryDate,
+            batchNumber: poData.batchNumber || undefined,
+            openingStock: 0,
+            purchased: isDelivered ? poData.quantityTotal : 0,
+            used: 0,
+            closingStock: isDelivered ? poData.quantityTotal : 0,
+            actualClosingStock: isDelivered ? poData.quantityTotal : undefined,
+            lastPurchaseRef: poData.invoiceNumber || newPo.id,
+          };
+          newPo.targetInventoryItemId = newBatchItem.id;
+          return [...prev, newBatchItem].sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        return prev.map((item) => {
           if (item.id === poData.targetInventoryItemId) {
-            const isDelivered = poData.status === 'Delivered';
             const newPurchased = isDelivered ? item.purchased + poData.quantityTotal : item.purchased;
             const newClosing = isDelivered ? item.closingStock + poData.quantityTotal : item.closingStock;
             return {
@@ -517,8 +555,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             };
           }
           return item;
-        })
-      );
+        });
+      });
     }
   };
 
@@ -528,8 +566,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // If marked Delivered and associated with an inventory SKU, sync stock & expiry
     if (existingPo && status === 'Delivered' && existingPo.status !== 'Delivered' && existingPo.targetInventoryItemId) {
-      setInventory((prev) =>
-        prev.map((item) => {
+      setInventory((prev) => {
+        const targetItem = prev.find((i) => i.id === existingPo.targetInventoryItemId);
+        if (
+          targetItem &&
+          targetItem.expiryDate &&
+          existingPo.expiryDate &&
+          targetItem.expiryDate !== existingPo.expiryDate
+        ) {
+          // Different expiry date: assign as a separate new inventory item
+          const baseName = targetItem.name
+            .replace(/\s*\(Batch.*?\)/gi, '')
+            .replace(/\s*\(Exp:.*?\)/gi, '')
+            .trim();
+          const batchSuffix = existingPo.batchNumber
+            ? `(Batch ${existingPo.batchNumber} • Exp: ${existingPo.expiryDate})`
+            : `(Exp: ${existingPo.expiryDate})`;
+          const newBatchName = `${baseName} ${batchSuffix}`;
+
+          const newBatchItem: InventoryItem = {
+            ...targetItem,
+            id: `inv-${Date.now()}`,
+            name: newBatchName,
+            nameAr: newBatchName,
+            expiryDate: existingPo.expiryDate,
+            batchNumber: existingPo.batchNumber || undefined,
+            openingStock: 0,
+            purchased: existingPo.quantityTotal,
+            used: 0,
+            closingStock: existingPo.quantityTotal,
+            actualClosingStock: existingPo.quantityTotal,
+            lastPurchaseRef: existingPo.invoiceNumber || existingPo.id,
+          };
+          return [...prev, newBatchItem].sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        return prev.map((item) => {
           if (item.id === existingPo.targetInventoryItemId) {
             return {
               ...item,
@@ -541,8 +613,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             };
           }
           return item;
-        })
-      );
+        });
+      });
     }
 
     setPurchases((prev) =>

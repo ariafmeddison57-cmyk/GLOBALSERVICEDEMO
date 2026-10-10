@@ -54,7 +54,6 @@ export const PurchasesView: React.FC = () => {
   // Item specification mode: 'assign' = assign existing inventory SKU, 'manual' = manual description / first-time purchase
   const [itemEntryMode, setItemEntryMode] = useState<'assign' | 'manual'>('assign');
   const [manualItemName, setManualItemName] = useState('');
-  const [manualItemNameAr, setManualItemNameAr] = useState('');
   const [manualCategory, setManualCategory] = useState<InventoryItem['category']>('Dairy & Fresh');
   const [manualUnit, setManualUnit] = useState<InventoryItem['unit']>('kg');
   const [autoAddToInventory, setAutoAddToInventory] = useState(true);
@@ -142,12 +141,75 @@ export const PurchasesView: React.FC = () => {
 
     let assignedInventoryId =
       itemEntryMode === 'assign' ? newTargetInventoryId || undefined : undefined;
+    let createdAsNewBatch = false;
 
-    // If manual entry for first-time purchased item and autoAddToInventory is enabled, register it in inventory!
-    if (itemEntryMode === 'manual' && autoAddToInventory) {
+    // Check Case: An item is assigned or entered with a different expiry date from already existing stock
+    // Rule: "if an item is entered but has different expirey with the already in invetory item it shoukd be asigned as a new item"
+    if (itemEntryMode === 'assign' && newTargetInventoryId) {
+      const existingItem = inventory.find((i) => i.id === newTargetInventoryId);
+      if (
+        existingItem &&
+        existingItem.expiryDate &&
+        newExpiryDate &&
+        existingItem.expiryDate !== newExpiryDate
+      ) {
+        // Different expiry date: Assign as a separate new inventory item
+        const baseName = existingItem.name
+          .replace(/\s*\(Batch.*?\)/gi, '')
+          .replace(/\s*\(Exp:.*?\)/gi, '')
+          .replace(/\s*\[Batch.*?\]/gi, '')
+          .trim();
+        const batchSuffix = newBatchNumber.trim()
+          ? `(Batch ${newBatchNumber.trim()} • Exp: ${newExpiryDate})`
+          : `(Exp: ${newExpiryDate})`;
+        const newBatchItemName = `${baseName} ${batchSuffix}`;
+
+        const newBatchItem = addInventoryItem({
+          name: newBatchItemName,
+          nameAr: newBatchItemName,
+          brandIds: existingItem.brandIds,
+          category: existingItem.category,
+          unit: existingItem.unit,
+          openingStock: 0,
+          purchased: qty,
+          used: 0,
+          closingStock: isDelivered ? qty : 0,
+          actualClosingStock: isDelivered ? qty : undefined,
+          minReorderLevel: existingItem.minReorderLevel,
+          unitCost: unitPrice || existingItem.unitCost,
+          location: newDestination,
+          expiryDate: newExpiryDate,
+          batchNumber: newBatchNumber.trim() || undefined,
+          supplier: newSupplier.trim() || existingItem.supplier,
+          lastPurchaseRef: newInvoiceNumber.trim() || undefined,
+        });
+
+        assignedInventoryId = newBatchItem.id;
+        createdAsNewBatch = true;
+      }
+    } else if (itemEntryMode === 'manual' && autoAddToInventory) {
+      // Check if item with this name already exists in inventory with a different expiry
+      const matchingExisting = inventory.find(
+        (i) => i.name.toLowerCase().trim() === manualItemName.toLowerCase().trim()
+      );
+
+      let finalName = manualItemName.trim();
+      if (
+        matchingExisting &&
+        matchingExisting.expiryDate &&
+        newExpiryDate &&
+        matchingExisting.expiryDate !== newExpiryDate
+      ) {
+        const batchSuffix = newBatchNumber.trim()
+          ? `(Batch ${newBatchNumber.trim()} • Exp: ${newExpiryDate})`
+          : `(Exp: ${newExpiryDate})`;
+        finalName = `${manualItemName.trim()} ${batchSuffix}`;
+        createdAsNewBatch = true;
+      }
+
       const newItem = addInventoryItem({
-        name: manualItemName.trim(),
-        nameAr: manualItemNameAr.trim() || manualItemName.trim(),
+        name: finalName,
+        nameAr: finalName,
         brandIds: ['kahwatee', 'kinda'],
         category: manualCategory,
         unit: manualUnit,
@@ -187,13 +249,17 @@ export const PurchasesView: React.FC = () => {
     setIsModalOpen(false);
     setNewItemsSummary('');
     setManualItemName('');
-    setManualItemNameAr('');
     setNewInvoiceNumber('');
     setNewBatchNumber('');
     setNewTargetInventoryId('');
 
     showToast(
-      itemEntryMode === 'manual' && autoAddToInventory
+      createdAsNewBatch
+        ? t(
+            `Different expiry detected: Created and assigned as a new inventory batch item (${newExpiryDate})!`,
+            `تم رصد تاريخ صلاحية مختلف: تم إنشاء الصنف كدفعة جديدة في المخزون (${newExpiryDate})!`
+          )
+        : itemEntryMode === 'manual' && autoAddToInventory
         ? t(
             `Purchase recorded & new SKU "${manualItemName.trim()}" added to inventory with batch expiry ${newExpiryDate}!`,
             `تم تسجيل المشترى وإضافة الصنف الجديد "${manualItemName.trim()}" للمخزون بصلاحية ${newExpiryDate}!`
@@ -686,11 +752,13 @@ export const PurchasesView: React.FC = () => {
                       className="w-full p-2.5 text-xs rounded-xl bg-white dark:bg-neutral-800 border border-blue-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 font-semibold"
                     >
                       <option value="">{t('-- Select Inventory SKU --', '-- اختر الصنف من المخزون --')}</option>
-                      {inventory.map((inv) => (
-                        <option key={inv.id} value={inv.id}>
-                          {inv.name} ({inv.unit} · {inv.supplier} · {inv.category})
-                        </option>
-                      ))}
+                      {[...inventory]
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((inv) => (
+                          <option key={inv.id} value={inv.id}>
+                            {inv.name} ({inv.unit} · {inv.supplier} · {inv.category})
+                          </option>
+                        ))}
                     </select>
                   </div>
 
@@ -720,28 +788,15 @@ export const PurchasesView: React.FC = () => {
 
                   <div>
                     <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                      {t('Item Name & Description (English)', 'اسم وبيان الصنف المشترى')} *
+                      {t('Item Name & Description', 'اسم وبيان الصنف المشترى')} *
                     </label>
                     <input
                       type="text"
                       required
                       value={manualItemName}
                       onChange={(e) => setManualItemName(e.target.value)}
-                      placeholder={t('e.g. Madagascar Bourbon Vanilla Extract 500ml', 'مثال: مستخلص فانيليا مدغشقر ٥٠٠ مل')}
+                      placeholder="e.g. Madagascar Bourbon Vanilla Extract 500ml"
                       className="w-full text-xs p-2.5 rounded-xl border border-amber-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                      {t('Item Name in Arabic (Optional)', 'اسم الصنف بالعربية (اختياري)')}
-                    </label>
-                    <input
-                      type="text"
-                      value={manualItemNameAr}
-                      onChange={(e) => setManualItemNameAr(e.target.value)}
-                      placeholder="مثال: فانيليا مدغشقر مركزة ٥٠٠ مل"
-                      className="w-full text-xs p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 outline-none"
                     />
                   </div>
 

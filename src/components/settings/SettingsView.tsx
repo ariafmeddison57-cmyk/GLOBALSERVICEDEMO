@@ -132,7 +132,7 @@ export const SettingsView: React.FC = () => {
               <input
                 type="text"
                 disabled
-                value="QAR (Qatari Riyal / ريال قطري)"
+                value={t('QAR (Qatari Riyal)', 'ريال قطري (QAR)')}
                 className="w-full p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 font-mono font-medium"
               />
             </div>

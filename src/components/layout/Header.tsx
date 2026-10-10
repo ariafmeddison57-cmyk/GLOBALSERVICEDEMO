@@ -233,7 +233,7 @@ export const Header: React.FC = () => {
           title="Switch Language"
         >
           <Globe className="w-3.5 h-3.5 text-slate-500" />
-          <span>{language === 'en' ? 'عربي' : 'EN'}</span>
+          <span>{language === 'en' ? 'AR' : 'EN'}</span>
         </button>
 
         {/* Primary Export CTA (HQ Admin Only) */}
