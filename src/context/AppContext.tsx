@@ -65,6 +65,8 @@ interface AppContextType {
   t: (en: string, ar: string) => string;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  designVariant: 'grove' | 'dune' | 'harbor';
+  setDesignVariant: (variant: 'grove' | 'dune' | 'harbor') => void;
 
   // Sound & Audio feedback
   soundEnabled: boolean;
@@ -152,6 +154,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [designVariant, setDesignVariant] = useState<'grove' | 'dune' | 'harbor'>('grove');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Data states
@@ -794,6 +797,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         t,
         theme,
         toggleTheme,
+        designVariant,
+        setDesignVariant,
         soundEnabled,
         setSoundEnabled,
         playSound,

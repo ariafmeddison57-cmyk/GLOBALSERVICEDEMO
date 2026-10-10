@@ -15,6 +15,7 @@ import {
   Check,
   X,
   FileSpreadsheet,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -35,6 +36,8 @@ export const Header: React.FC = () => {
     t,
     theme,
     toggleTheme,
+    designVariant,
+    setDesignVariant,
     formatCurrency,
     isSidebarCollapsed,
     toggleSidebar,
@@ -48,6 +51,13 @@ export const Header: React.FC = () => {
   const [isExportToastOpen, setIsExportToastOpen] = useState(false);
   const [isStationModalOpen, setIsStationModalOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isDesignMenuOpen, setIsDesignMenuOpen] = useState(false);
+
+  const designOptions = [
+    { id: 'grove' as const, name: t('Grove', 'الحديقة'), note: t('Forest & brass', 'أخضر ونحاسي'), colors: ['#17352c', '#e6c18f', '#f5f6f3'] },
+    { id: 'dune' as const, name: t('Dune', 'الكثبان'), note: t('Clay & sand', 'طيني ورملي'), colors: ['#624431', '#c26c45', '#faf5ed'] },
+    { id: 'harbor' as const, name: t('Harbor', 'المرفأ'), note: t('Navy & mist', 'كحلي وضبابي'), colors: ['#1c3552', '#cd9b64', '#f1f5f8'] },
+  ];
 
   const handleExport = () => {
     setIsExportToastOpen(true);
@@ -214,6 +224,51 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Theme Toggle Button (Light/Dark mode) */}
+        <div className="relative">
+          <button
+            onClick={() => setIsDesignMenuOpen(!isDesignMenuOpen)}
+            className="p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors"
+            title={t('Try another design', 'جرّب تصميماً آخر')}
+            aria-label={t('Choose a design', 'اختر تصميماً')}
+          >
+            <Palette className="w-4 h-4" />
+          </button>
+          {isDesignMenuOpen && (
+            <div className="design-menu absolute right-0 mt-3 w-72 p-2 rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-2xl z-50">
+              <div className="px-3 py-2 border-b border-slate-100 dark:border-neutral-800">
+                <p className="text-xs font-bold text-slate-900 dark:text-neutral-100">{t('Design concepts', 'اتجاهات التصميم')}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-neutral-400">{t('Switch the look without changing your data.', 'غيّر المظهر دون تغيير بياناتك.')}</p>
+              </div>
+              <div className="mt-1 space-y-1">
+                {designOptions.map((option) => {
+                  const isSelected = designVariant === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => {
+                        setDesignVariant(option.id);
+                        setIsDesignMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${isSelected ? 'bg-slate-50 dark:bg-neutral-800' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
+                    >
+                      <span className="flex items-center -space-x-1.5">
+                        {option.colors.map((color) => (
+                          <span key={color} className="design-swatch" style={{ backgroundColor: color }} />
+                        ))}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-bold text-slate-800 dark:text-neutral-100">{option.name}</span>
+                        <span className="block text-[10px] text-slate-500 dark:text-neutral-400">{option.note}</span>
+                      </span>
+                      {isSelected && <Check className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={toggleTheme}
           className="p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors"
