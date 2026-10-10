@@ -34,6 +34,30 @@ export interface RecipeDeductionNotice {
   items: { ingredientName: string; quantityDeducted: string; remainingStock: string }[];
 }
 
+const APP_SETTINGS_KEY = 'globalservices-app-settings-v1';
+interface SavedAppSettings {
+  language: 'en' | 'ar';
+  theme: 'light' | 'dark';
+  soundEnabled: boolean;
+  taxRate: number;
+}
+
+const loadAppSettings = (): SavedAppSettings => {
+  const defaults: SavedAppSettings = { language: 'en', theme: 'light', soundEnabled: true, taxRate: 0 };
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(APP_SETTINGS_KEY) || '{}') as Partial<SavedAppSettings>;
+    return {
+      language: saved.language === 'ar' ? 'ar' : defaults.language,
+      theme: saved.theme === 'dark' ? 'dark' : defaults.theme,
+      soundEnabled: typeof saved.soundEnabled === 'boolean' ? saved.soundEnabled : defaults.soundEnabled,
+      taxRate: typeof saved.taxRate === 'number' && saved.taxRate >= 0 && saved.taxRate <= 100 ? saved.taxRate : defaults.taxRate,
+    };
+  } catch {
+    return defaults;
+  }
+};
+
 interface AppContextType {
   // Navigation & Filters
   currentView: ViewMode;
@@ -65,6 +89,9 @@ interface AppContextType {
   t: (en: string, ar: string) => string;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  taxRate: number;
+  setTaxRate: (rate: number) => void;
+  saveAppSettings: () => boolean;
   designVariant: 'grove' | 'dune' | 'harbor';
   setDesignVariant: (variant: 'grove' | 'dune' | 'harbor') => void;
 
@@ -152,10 +179,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [currentPosUnitId, setCurrentPosUnitId] = useState<PosUnitId>('coffee-shop');
 
-  const [language, setLanguage] = useState<'en' | 'ar'>('en');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [initialSettings] = useState(loadAppSettings);
+  const [language, setLanguage] = useState<'en' | 'ar'>(initialSettings.language);
+  const [theme, setTheme] = useState<'light' | 'dark'>(initialSettings.theme);
   const [designVariant, setDesignVariant] = useState<'grove' | 'dune' | 'harbor'>('grove');
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(initialSettings.soundEnabled);
+  const [taxRate, setTaxRate] = useState<number>(initialSettings.taxRate);
+
+  const saveAppSettings = () => {
+    try {
+      window.localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify({ language, theme, soundEnabled, taxRate }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   // Data states
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -321,7 +359,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const cartTax = 0; // Standard 0% in Qatar for general F&B
+  const cartTax = parseFloat((cartSubtotal * (taxRate / 100)).toFixed(2));
   const cartTotal = cartSubtotal + cartTax;
 
   // Create order with AUTOMATIC RECIPE STOCK DEPLETION
@@ -810,6 +848,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         t,
         theme,
         toggleTheme,
+        taxRate,
+        setTaxRate,
+        saveAppSettings,
         designVariant,
         setDesignVariant,
         soundEnabled,
