@@ -53,7 +53,7 @@ export const PayrollView: React.FC = () => {
             {t('Payroll', 'مسير الرواتب')}
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            {t('Payroll', 'مسير الرواتب')}
+            {t('Demo preview only — completing this screen does not send a payment to QNB.', 'معاينة تجريبية فقط — إكمال هذه الشاشة لا يرسل دفعة إلى بنك قطر الوطني.')}
           </p>
         </div>
 
@@ -74,8 +74,8 @@ export const PayrollView: React.FC = () => {
             <CheckCircle2 className="w-4 h-4" />
             <span>
               {payrollStatus === 'processed'
-                ? t('Payroll Dispatched to QNB', 'تم إرسال المسير للبنك')
-                : t('Approve & Run Payroll', 'اعتماد وصرف الرواتب')}
+                ? t('Demo Preview Complete', 'اكتملت المعاينة التجريبية')
+                : t('Mark Demo Payroll Complete', 'تحديد المعاينة كمسيرة مكتملة')}
             </span>
           </button>
         </div>

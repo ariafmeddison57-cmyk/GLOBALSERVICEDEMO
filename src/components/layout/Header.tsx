@@ -3,7 +3,6 @@ import {
   Search,
   Bell,
   Calendar,
-  Plus,
   Sun,
   Moon,
   Globe,
@@ -20,7 +19,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { POS_UNITS } from '../../data/mockData';
+import { BRANDS, BRANCHES, POS_UNITS } from '../../data/mockData';
 import { PosUnitId } from '../../types';
 
 export const Header: React.FC = () => {
@@ -44,6 +43,13 @@ export const Header: React.FC = () => {
     isRTL,
     dateRange,
     setDateRange,
+    orders,
+    inventory,
+    staff,
+    expenses,
+    totalTodaySales,
+    totalMonthlySales,
+    totalExpenses,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,6 +58,7 @@ export const Header: React.FC = () => {
   const [isStationModalOpen, setIsStationModalOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isDesignMenuOpen, setIsDesignMenuOpen] = useState(false);
+  const [exportedReportName, setExportedReportName] = useState('');
 
   const designOptions = [
     { id: 'grove' as const, name: t('Grove', 'الحديقة'), note: t('Forest & brass', 'أخضر ونحاسي'), colors: ['#17352c', '#e6c18f', '#f5f6f3'] },
@@ -60,6 +67,85 @@ export const Header: React.FC = () => {
   ];
 
   const handleExport = () => {
+    const csvValue = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows: unknown[][] = [
+      ['GLOBALSERVICES Operations Report'],
+      [t('Dashboard period selected', 'الفترة المحددة في لوحة المعلومات'), dateRange],
+      [t('Ledger coverage', 'نطاق السجل'), t('All records currently loaded in this demo', 'كل السجلات المحملة حاليًا في هذه النسخة التجريبية')],
+      [t('Generated at', 'تاريخ الإنشاء'), new Date().toLocaleString()],
+      [],
+      [t('Summary metric', 'المؤشر'), t('Value', 'القيمة')],
+      [t("Today's sales (QAR)", 'مبيعات اليوم (ر.ق)'), totalTodaySales.toFixed(2)],
+      [t('Monthly sales (QAR)', 'المبيعات الشهرية (ر.ق)'), totalMonthlySales.toFixed(2)],
+      [t('Operating expenses (QAR)', 'المصروفات التشغيلية (ر.ق)'), totalExpenses.toFixed(2)],
+      [t('Orders in ledger', 'الطلبات في السجل'), orders.length],
+      [t('Inventory items', 'أصناف المخزون'), inventory.length],
+      [t('Staff members', 'الموظفون'), staff.length],
+      [],
+      [
+        t('Order ID', 'رقم الطلب'),
+        t('Created at', 'تاريخ الطلب'),
+        t('Brand', 'العلامة'),
+        t('Branch', 'الفرع'),
+        t('POS unit', 'نقطة البيع'),
+        t('Order type', 'نوع الطلب'),
+        t('Payment method', 'طريقة الدفع'),
+        t('Status', 'الحالة'),
+        t('Subtotal (QAR)', 'المجموع الفرعي (ر.ق)'),
+        t('Tax (QAR)', 'الضريبة (ر.ق)'),
+        t('Total (QAR)', 'الإجمالي (ر.ق)'),
+        t('Items', 'الأصناف'),
+      ],
+      ...orders.map((order) => [
+        order.id,
+        order.createdAt.toLocaleString(),
+        BRANDS.find((brand) => brand.id === order.brandId)?.name || order.brandId,
+        BRANCHES.find((branch) => branch.id === order.branchId)?.name || order.branchId,
+        POS_UNITS.find((unit) => unit.id === order.posUnitId)?.name || order.posUnitId,
+        order.orderType,
+        order.paymentMethod,
+        order.status,
+        order.subtotal.toFixed(2),
+        order.tax.toFixed(2),
+        order.total.toFixed(2),
+        order.items.map((item) => `${item.product.name} x${item.quantity}`).join('; '),
+      ]),
+      [],
+      [t('Expense details', 'تفاصيل المصروفات')],
+      [
+        t('Expense', 'المصروف'),
+        t('Date', 'التاريخ'),
+        t('Category', 'الفئة'),
+        t('Branch', 'الفرع'),
+        t('Paid to', 'دفع إلى'),
+        t('Payment method', 'طريقة الدفع'),
+        t('Amount (QAR)', 'المبلغ (ر.ق)'),
+        t('Receipt reference', 'مرجع الإيصال'),
+      ],
+      ...expenses.map((expense) => [
+        expense.title,
+        expense.date,
+        expense.category,
+        BRANCHES.find((branch) => branch.id === expense.branchId)?.name || expense.branchId,
+        expense.paidTo,
+        expense.paymentMethod,
+        expense.amount.toFixed(2),
+        expense.receiptRef || '',
+      ]),
+    ];
+
+    const csv = `\uFEFF${rows.map((row) => row.map(csvValue).join(',')).join('\r\n')}`;
+    const reportName = `GLOBALSERVICES_Operations_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    const reportUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const downloadLink = document.createElement('a');
+    downloadLink.href = reportUrl;
+    downloadLink.download = reportName;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    window.setTimeout(() => URL.revokeObjectURL(reportUrl), 1000);
+
+    setExportedReportName(reportName);
     setIsExportToastOpen(true);
     setTimeout(() => setIsExportToastOpen(false), 3500);
   };
@@ -297,8 +383,8 @@ export const Header: React.FC = () => {
             onClick={handleExport}
             className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 text-xs font-bold shadow-xs transition-all active:scale-95"
           >
-            <Plus className="w-4 h-4" />
-            <span>{t('Export Report', 'تصدير التقرير')}</span>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{t('Download Report', 'تنزيل التقرير')}</span>
           </button>
         ) : (
           <button
@@ -319,8 +405,8 @@ export const Header: React.FC = () => {
             <FileSpreadsheet className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-bold">{t('Report Export Successful', 'تم تصدير التقرير بنجاح')}</h4>
-            <p className="text-[11px] text-slate-300">{t('GLOBALSERVICES_Consolidated_Financial_Oct2026.pdf ready', 'تم تجهيز ملف التقرير المالي الموحد')}</p>
+            <h4 className="text-xs font-bold">{t('Report downloaded', 'تم تنزيل التقرير')}</h4>
+            <p className="text-[11px] text-slate-300">{exportedReportName}</p>
           </div>
         </div>
       )}

@@ -137,8 +137,6 @@ export const PurchasesView: React.FC = () => {
     const qty = parseInt(newQuantity) || 1;
     const totalAmt = parseFloat(newAmount) || 0;
     const unitPrice = qty > 0 ? parseFloat((totalAmt / qty).toFixed(2)) : 10;
-    const isDelivered = newInitialStatus === 'Delivered';
-
     let assignedInventoryId =
       itemEntryMode === 'assign' ? newTargetInventoryId || undefined : undefined;
     let createdAsNewBatch = false;
@@ -171,10 +169,10 @@ export const PurchasesView: React.FC = () => {
           category: existingItem.category,
           unit: existingItem.unit,
           openingStock: 0,
-          purchased: qty,
+          purchased: 0,
           used: 0,
-          closingStock: isDelivered ? qty : 0,
-          actualClosingStock: isDelivered ? qty : undefined,
+          closingStock: 0,
+          actualClosingStock: undefined,
           minReorderLevel: existingItem.minReorderLevel,
           unitCost: unitPrice || existingItem.unitCost,
           location: newDestination,
@@ -214,10 +212,10 @@ export const PurchasesView: React.FC = () => {
         category: manualCategory,
         unit: manualUnit,
         openingStock: 0,
-        purchased: qty,
+        purchased: 0,
         used: 0,
-        closingStock: isDelivered ? qty : 0,
-        actualClosingStock: isDelivered ? qty : undefined,
+        closingStock: 0,
+        actualClosingStock: undefined,
         minReorderLevel: Math.max(5, Math.round(qty * 0.2)),
         unitCost: unitPrice,
         location: newDestination,

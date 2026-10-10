@@ -164,6 +164,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [...INVENTORY_ITEMS].sort((a, b) => a.name.localeCompare(b.name))
   );
   const [purchases, setPurchases] = useState<PurchaseOrder[]>(PURCHASE_ORDERS);
+  const [receivedPurchaseIds, setReceivedPurchaseIds] = useState<Set<string>>(
+    () => new Set(PURCHASE_ORDERS.filter((po) => po.status === 'Delivered').map((po) => po.id))
+  );
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
   const [damagedGoods, setDamagedGoods] = useState<DamagedInventoryRecord[]>(INITIAL_DAMAGED_GOODS);
   const [staff, setStaff] = useState<StaffMember[]>(STAFF_MEMBERS);
@@ -387,7 +390,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: nextOrderNum,
       brandId: effectiveBrand,
       branchId: effectiveBranch,
-      posUnitId: currentPosUnitId,
+      posUnitId: cart[0]?.product.posUnitId || currentPosUnitId,
       orderType,
       items: [...cart],
       subtotal: cartSubtotal,
@@ -505,8 +508,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setPurchases((prev) => [newPo, ...prev]);
 
     // Automatically update or assign as new inventory item based on expiry!
-    if (poData.targetInventoryItemId && poData.expiryDate) {
+    if (poData.targetInventoryItemId) {
       const isDelivered = poData.status === 'Delivered';
+      if (isDelivered) {
+        setReceivedPurchaseIds((prev) => new Set(prev).add(newPo.id));
+      }
       setInventory((prev) => {
         const targetItem = prev.find((i) => i.id === poData.targetInventoryItemId);
         if (
@@ -568,7 +574,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const existingPo = purchases.find((p) => p.id === id);
 
     // If marked Delivered and associated with an inventory SKU, sync stock & expiry
-    if (existingPo && status === 'Delivered' && existingPo.status !== 'Delivered' && existingPo.targetInventoryItemId) {
+    const shouldReceive =
+      existingPo &&
+      status === 'Delivered' &&
+      !receivedPurchaseIds.has(id) &&
+      Boolean(existingPo.targetInventoryItemId);
+
+    if (shouldReceive && existingPo?.targetInventoryItemId) {
+      setReceivedPurchaseIds((prev) => new Set(prev).add(id));
       setInventory((prev) => {
         const targetItem = prev.find((i) => i.id === existingPo.targetInventoryItemId);
         if (

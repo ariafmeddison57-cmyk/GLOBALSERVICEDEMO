@@ -9,6 +9,7 @@ import {
   Bike,
   Sparkles,
   CheckCircle2,
+  AlertTriangle,
   Printer,
   ArrowRight,
   Clock,
@@ -46,6 +47,7 @@ export const POSView: React.FC = () => {
     loginAsAdmin,
     activeCashier,
     products,
+    inventory,
     cart,
     addToCart,
     updateQuantity,
@@ -69,6 +71,7 @@ export const POSView: React.FC = () => {
   const [orderType, setOrderType] = useState<OrderType>('dine-in');
   const [tableNumber, setTableNumber] = useState<string>('Table 05');
   const [customerName, setCustomerName] = useState<string>('');
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [completedOrderModal, setCompletedOrderModal] = useState<Order | null>(null);
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
   const [cashTendered, setCashTendered] = useState<number>(0);
@@ -82,6 +85,23 @@ export const POSView: React.FC = () => {
   const [adminPosFilter, setAdminPosFilter] = useState<PosUnitId | 'all'>('all');
 
   const effectiveUnitFilter = userRole === 'admin' ? adminPosFilter : currentPosUnitId;
+
+  const addProductToCart = (product: Product) => {
+    const currentTerminalId = cart[0]?.product.posUnitId;
+    if (currentTerminalId && currentTerminalId !== product.posUnitId) {
+      const currentTerminal = posUnits.find((unit) => unit.id === currentTerminalId)?.name || currentTerminalId;
+      setCartNotice(
+        t(
+          `This ticket is for ${currentTerminal}. Clear the cart before adding items from another terminal.`,
+          `هذه الفاتورة مخصصة لـ ${currentTerminal}. أفرغ السلة قبل إضافة أصناف من نقطة بيع أخرى.`
+        )
+      );
+      return;
+    }
+
+    setCartNotice(null);
+    addToCart(product);
+  };
 
   const filteredProducts = products.filter((p) => {
     const matchesUnit = effectiveUnitFilter === 'all' || p.posUnitId === effectiveUnitFilter;
@@ -103,8 +123,36 @@ export const POSView: React.FC = () => {
     { id: 'beverages', name: 'Beverages', nameAr: 'مشروبات', icon: Coffee },
   ];
 
+  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const stockRequirements = new Map<string, { name: string; nameAr?: string; unit: string; quantity: number }>();
+  cart.forEach((cartItem) => {
+    cartItem.product.recipe?.ingredients.forEach((ingredient) => {
+      const current = stockRequirements.get(ingredient.inventoryItemId) || {
+        name: ingredient.name,
+        nameAr: ingredient.nameAr,
+        unit: ingredient.unit,
+        quantity: 0,
+      };
+      current.quantity += ingredient.portionQty * cartItem.quantity;
+      stockRequirements.set(ingredient.inventoryItemId, current);
+    });
+  });
+
+  const stockShortages = Array.from(stockRequirements.entries())
+    .map(([inventoryItemId, requirement]) => {
+      const inventoryItem = inventory.find((item) => item.id === inventoryItemId);
+      const available = inventoryItem?.closingStock ?? 0;
+      return {
+        ...requirement,
+        available,
+        missing: !inventoryItem || available + 0.0001 < requirement.quantity,
+      };
+    })
+    .filter((item) => item.missing);
+
   const handleCheckout = (method: 'cash' | 'card' | 'talabat' | 'snoonu') => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || stockShortages.length > 0) return;
     if (method === 'cash') {
       setCashTendered(cartTotal);
       setIsCashModalOpen(true);
@@ -116,13 +164,12 @@ export const POSView: React.FC = () => {
   };
 
   const finalizeCashPayment = () => {
+    if (stockShortages.length > 0 || cashTendered < cartTotal) return;
     setIsCashModalOpen(false);
     const order = createOrder('cash', orderType, customerName || undefined, tableNumber);
     setCompletedOrderModal(order);
     setIsTabletCartOpen(false);
   };
-
-  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-neutral-950 font-sans select-none overflow-hidden">
@@ -270,7 +317,7 @@ export const POSView: React.FC = () => {
                 return (
                   <div
                     key={product.id}
-                    onClick={() => addToCart(product)}
+                    onClick={() => addProductToCart(product)}
                     className="group bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 shadow-xs hover:shadow-md hover:border-slate-400 dark:hover:border-neutral-600 transition-all duration-150 flex flex-col justify-between overflow-hidden cursor-pointer active:scale-[0.98] touch-manipulation"
                   >
                     <div>
@@ -343,7 +390,7 @@ export const POSView: React.FC = () => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          addToCart(product);
+                          addProductToCart(product);
                         }}
                         className="w-8 h-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 flex items-center justify-center font-bold shadow-xs active:scale-95 transition-all"
                       >
@@ -497,6 +544,28 @@ export const POSView: React.FC = () => {
 
           {/* Cart Bottom Summary & Payment Buttons */}
           <div className="p-3 sm:p-4 bg-slate-50 dark:bg-neutral-800/60 border-t border-slate-200 dark:border-neutral-800 space-y-2.5">
+            {cart.length > 0 && stockShortages.length > 0 && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200" role="alert">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t('This cart needs more stock before checkout.', 'المخزون غير كافٍ لإتمام الطلب.')}</span>
+                </div>
+                {stockShortages.length > 0 && (
+                  <ul className="mt-1.5 space-y-1 text-[10px]">
+                    {stockShortages.map((item, index) => (
+                      <li key={`${item.name}-${index}`}>
+                        {t(item.name, item.nameAr || item.name)}: {t('needs', 'يحتاج')} {item.quantity.toFixed(2)} {item.unit}; {item.available.toFixed(2)} {t('available', 'متاح')}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {cart.length > 0 && cartNotice && stockShortages.length === 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" role="status">
+                {cartNotice}
+              </div>
+            )}
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-slate-500 dark:text-neutral-400">
                 <span>{t('Subtotal', 'المجموع الفرعي')}</span>
@@ -511,7 +580,7 @@ export const POSView: React.FC = () => {
             {/* High-Contrast Tender Buttons */}
             <div className="grid grid-cols-3 gap-2 pt-1">
               <button
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || stockShortages.length > 0}
                 onClick={() => handleCheckout('cash')}
                 className="py-2.5 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition-all touch-manipulation"
               >
@@ -520,7 +589,7 @@ export const POSView: React.FC = () => {
               </button>
 
               <button
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || stockShortages.length > 0}
                 onClick={() => handleCheckout('card')}
                 className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition-all touch-manipulation"
               >
@@ -529,7 +598,7 @@ export const POSView: React.FC = () => {
               </button>
 
               <button
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || stockShortages.length > 0}
                 onClick={() => handleCheckout('talabat')}
                 className="py-2.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95 transition-all touch-manipulation"
               >
@@ -719,6 +788,11 @@ export const POSView: React.FC = () => {
                   </div>
                 </div>
               )}
+              {cashTendered < cartTotal && (
+                <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  {t('Cash received must cover the amount due.', 'المبلغ المستلم يجب أن يغطي المبلغ المستحق.')}
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 mt-5">
@@ -730,7 +804,8 @@ export const POSView: React.FC = () => {
               </button>
               <button
                 onClick={finalizeCashPayment}
-                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 text-xs font-bold"
+                disabled={cashTendered < cartTotal || stockShortages.length > 0}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white dark:bg-white dark:text-neutral-900 text-xs font-bold"
               >
                 {t('Confirm Payment', 'تأكيد الدفع')}
               </button>
