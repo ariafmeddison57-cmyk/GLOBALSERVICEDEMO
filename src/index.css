@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+  --canvas: #f5f6f3;
+  --surface: #ffffff;
+  --ink: #182a25;
+  --muted: #718078;
+  --line: #e5eae5;
+  --pine: #17352c;
+  --pine-deep: #112820;
+  --mint: #dcefe4;
+  --accent: #bc8950;
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: #101a17;
+  --surface: #17231e;
+  --ink: #edf4ef;
+  --muted: #a0afa7;
+  --line: #293a33;
+  --pine: #12251e;
+  --pine-deep: #0d1d17;
+  --mint: #274638;
+  --accent: #d2a36a;
+}
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -9,11 +35,189 @@
 
   body {
     font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--ink);
+    font-feature-settings: "ss01" on;
   }
 
   [dir="rtl"] body,
   [dir="rtl"] {
     font-family: var(--font-arabic), var(--font-sans);
+  }
+}
+
+/* GLOBALSERVICES visual system: warm stone surfaces, deep botanical navigation. */
+.app-shell {
+  background: var(--canvas) !important;
+  color: var(--ink);
+}
+
+.app-shell > aside {
+  background: linear-gradient(180deg, var(--pine) 0%, var(--pine-deep) 100%) !important;
+  border-color: rgba(225, 240, 231, 0.11) !important;
+  color: #edf4ef;
+  box-shadow: 12px 0 34px rgba(19, 48, 39, 0.08);
+}
+
+.app-shell > aside [class*="border-slate-100"],
+.app-shell > aside [class*="border-slate-200"] {
+  border-color: rgba(225, 240, 231, 0.12) !important;
+}
+
+.app-shell > aside [class*="text-slate-900"],
+.app-shell > aside [class*="text-slate-800"],
+.app-shell > aside [class*="text-slate-700"],
+.app-shell > aside [class*="text-slate-600"] {
+  color: #d5e1da !important;
+}
+
+.app-shell > aside [class*="text-slate-500"],
+.app-shell > aside [class*="text-slate-400"] {
+  color: #9caf9f !important;
+}
+
+.app-shell > aside [class*="bg-slate-900"]:not(nav button),
+.app-shell > aside nav button[class*="bg-slate-900"] {
+  background-color: #e6c18f !important;
+  color: #1d342b !important;
+}
+
+.app-shell > aside nav button[class*="bg-slate-900"] svg,
+.app-shell > aside nav button[class*="bg-slate-900"] span {
+  color: #1d342b !important;
+}
+
+.app-shell > aside nav button:not([class*="bg-slate-900"]):hover {
+  background: rgba(231, 243, 235, 0.09) !important;
+  color: #ffffff !important;
+}
+
+.app-shell > aside nav button:not([class*="bg-slate-900"]):hover svg {
+  color: #d6b27e !important;
+}
+
+.app-shell > aside [class*="bg-slate-50"],
+.app-shell > aside [class*="bg-neutral-800"] {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.app-shell > header {
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  border-color: var(--line) !important;
+  box-shadow: 0 1px 0 rgba(22, 42, 34, 0.02);
+  backdrop-filter: blur(16px);
+}
+
+.app-shell > header input {
+  background: var(--canvas) !important;
+  border-color: var(--line) !important;
+  border-radius: 12px !important;
+}
+
+.app-shell main {
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(218, 232, 219, 0.38), transparent 34rem),
+    var(--canvas);
+}
+
+.dashboard-canvas {
+  padding-top: 2.25rem;
+  padding-bottom: 3rem;
+}
+
+.dashboard-intro {
+  padding: 0.25rem 0 0.75rem;
+}
+
+.dashboard-eyebrow {
+  color: #7c8c81;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.dashboard-eyebrow-mark {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  border-radius: 999px;
+  background: #b98a55;
+  box-shadow: 0 0 0 4px rgba(185, 138, 85, 0.12);
+}
+
+.dashboard-pos-button {
+  background: #17392f;
+  color: #f8fbf8;
+  box-shadow: 0 8px 18px rgba(23, 57, 47, 0.14);
+}
+
+.dashboard-pos-button:hover {
+  background: #214b3d;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(23, 57, 47, 0.2);
+}
+
+.dark .dashboard-pos-button {
+  background: #d9e9dc;
+  color: #17352c;
+}
+
+.dashboard-canvas [class*="bg-white"][class*="rounded-2xl"] {
+  background: var(--surface) !important;
+  border-color: var(--line) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 2px 4px rgba(24, 42, 35, 0.025), 0 12px 32px rgba(24, 42, 35, 0.035) !important;
+}
+
+.dashboard-canvas [class*="bg-white"][class*="rounded-2xl"]:hover {
+  box-shadow: 0 4px 10px rgba(24, 42, 35, 0.035), 0 18px 36px rgba(24, 42, 35, 0.055) !important;
+}
+
+.dashboard-canvas h3 {
+  letter-spacing: -0.015em;
+}
+
+.dashboard-kpis > div {
+  position: relative;
+  overflow: hidden;
+  min-height: 152px;
+  padding: 1.25rem !important;
+}
+
+.dashboard-kpis > div::after {
+  content: "";
+  position: absolute;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  right: -32px;
+  bottom: -45px;
+  background: rgba(221, 237, 225, 0.34);
+  pointer-events: none;
+}
+
+.dark .dashboard-kpis > div::after {
+  background: rgba(105, 151, 121, 0.09);
+}
+
+.dashboard-canvas table thead th {
+  color: #839087;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+}
+
+@media (max-width: 640px) {
+  .dashboard-canvas {
+    padding: 1.25rem 1rem 2rem;
+  }
+
+  .dashboard-intro h1 {
+    font-size: 1.8rem;
+  }
+
+  .dashboard-pos-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 

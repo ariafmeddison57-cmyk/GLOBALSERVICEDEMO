@@ -18,7 +18,7 @@ const MainLayout: React.FC = () => {
   const { currentView } = useApp();
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
+    <div className="app-shell flex h-screen w-screen overflow-hidden bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       {/* Sidebar Navigation */}
       <Sidebar />
 

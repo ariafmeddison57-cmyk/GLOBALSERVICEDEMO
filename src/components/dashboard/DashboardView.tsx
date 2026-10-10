@@ -231,7 +231,29 @@ export const DashboardView: React.FC = () => {
   let cumulativeOffset = 0;
 
   return (
-    <div className="p-6 sm:p-8 max-w-[1600px] mx-auto space-y-6">
+    <div className="dashboard-canvas p-6 sm:p-8 max-w-[1600px] mx-auto space-y-6">
+      <section className="dashboard-intro flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <div className="dashboard-eyebrow flex items-center gap-2 mb-2">
+            <span className="dashboard-eyebrow-mark" />
+            <span>{t('GLOBALSERVICES  /  HEAD OFFICE', 'جلوبال سيرفيسز  /  الإدارة الرئيسية')}</span>
+          </div>
+          <h1 className="text-3xl sm:text-[2.15rem] font-bold tracking-tight text-slate-900 dark:text-white">
+            {t('Portfolio overview', 'نظرة عامة على المجموعة')}
+          </h1>
+          <p className="mt-1.5 text-sm text-slate-500 dark:text-neutral-400">
+            {t('A clear view of sales, operations, and your five business units.', 'نظرة شاملة على المبيعات والعمليات ووحدات الأعمال الخمس.')}
+          </p>
+        </div>
+        <button
+          onClick={() => setCurrentView('pos')}
+          className="dashboard-pos-button inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all"
+        >
+          <ShoppingBag className="w-4 h-4" />
+          <span>{t('Open point of sale', 'فتح نقطة البيع')}</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </section>
       {/* Live Sales Sync Banner when POS orders have been completed */}
       {liveSessionSalesTotal > 0 && (
         <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 animate-in fade-in duration-300">
@@ -270,7 +292,7 @@ export const DashboardView: React.FC = () => {
       )}
 
       {/* 1. TOP ROW: 4 Proportional, Refined KPI Cards (balanced typography) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      <div className="dashboard-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {topKpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
