@@ -281,6 +281,28 @@ export interface StaffMember {
   phone: string;
 }
 
+export interface StaffShift {
+  id: string;
+  staffId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  branchId: BranchId;
+  status: 'Draft' | 'Published';
+}
+
+export interface StaffTimesheet {
+  id: string;
+  staffId: string;
+  shiftId?: string;
+  date: string;
+  clockIn: string;
+  clockOut?: string;
+  status: 'Open' | 'Pending Review' | 'Approved';
+  note?: string;
+}
+
 export interface PayrollRecord {
   employeeId: string;
   employeeName: string;

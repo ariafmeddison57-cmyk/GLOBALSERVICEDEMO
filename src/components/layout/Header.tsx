@@ -155,7 +155,7 @@ export const Header: React.FC = () => {
       {/* Zone 1: Sidebar Toggle (when admin) + Search bar */}
       <div className="flex items-center gap-3 flex-1 max-w-md">
         {/* Sidebar Collapse Toggle Button (only when logged in as admin) */}
-        {userRole === 'admin' && (
+        {userRole === 'admin' && ['dashboard', 'reports', 'payroll'].includes(currentView) && (
           <button
             onClick={toggleSidebar}
             className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors shrink-0"

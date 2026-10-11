@@ -7,7 +7,7 @@ import { POSView } from './components/pos/POSView';
 import { InventoryView } from './components/inventory/InventoryView';
 import { PurchasesView } from './components/purchases/PurchasesView';
 import { ExpensesView } from './components/expenses/ExpensesView';
-import { StaffView } from './components/staff/StaffView';
+import { StaffHubView } from './components/staff/StaffHubView';
 import { PayrollView } from './components/payroll/PayrollView';
 import { ReportsView } from './components/reports/ReportsView';
 import { MenuRecipesView } from './components/menu/MenuRecipesView';
@@ -35,7 +35,7 @@ const MainLayout: React.FC = () => {
           {currentView === 'inventory' && <InventoryView />}
           {currentView === 'purchases' && <PurchasesView />}
           {currentView === 'expenses' && <ExpensesView />}
-          {currentView === 'staff' && <StaffView />}
+          {currentView === 'staff' && <StaffHubView />}
           {currentView === 'payroll' && <PayrollView />}
           {currentView === 'reports' && <ReportsView />}
           {currentView === 'flow' && <BusinessFlowView />}
