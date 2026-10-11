@@ -26,6 +26,7 @@ export const StaffView: React.FC = () => {
     addStaffMember,
     updateStaffMember,
     updateStaffStatus,
+    staffConsumptionRecords,
     t,
     language,
     formatCurrency,
@@ -413,6 +414,35 @@ export const StaffView: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <section className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{t('Staff Consumption Records', 'سجل استهلاك الموظفين')}</h3>
+            <p className="text-[11px] text-neutral-500 mt-1">{t('Items recorded for workers from POS are listed here and excluded from customer sales.', 'تظهر هنا أصناف الموظفين المسجلة من نقطة البيع ولا تحتسب ضمن مبيعات العملاء.')}</p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200 text-[10px] font-bold">{staffConsumptionRecords.length}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-neutral-50 dark:bg-neutral-800/60 text-neutral-500 uppercase text-[10px]"><tr>
+              <th className="p-3">{t('Employee', 'الموظف')}</th><th className="p-3">{t('Items', 'الأصناف')}</th><th className="p-3">{t('Quantity', 'الكمية')}</th><th className="p-3">{t('Branch', 'الفرع')}</th><th className="p-3">{t('Internal Cost', 'التكلفة الداخلية')}</th><th className="p-3">{t('Recorded by / time', 'المسجل / الوقت')}</th>
+            </tr></thead>
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {staffConsumptionRecords.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-neutral-500">{t('No staff items have been recorded yet.', 'لم يتم تسجيل أصناف للموظفين بعد.')}</td></tr> : staffConsumptionRecords.map((record) => (
+                <tr key={record.id}>
+                  <td className="p-3 font-bold text-neutral-900 dark:text-neutral-100">{record.staffName}</td>
+                  <td className="p-3">{record.items.map((item) => `${item.product.name} ×${item.quantity}`).join(', ')}</td>
+                  <td className="p-3 font-mono">{record.quantity}</td>
+                  <td className="p-3">{BRANCHES.find((branch) => branch.id === record.branchId)?.name || record.branchId}</td>
+                  <td className="p-3 font-mono font-bold">{formatCurrency(record.cost)}</td>
+                  <td className="p-3"><span className="block">{record.loggedBy}</span><span className="text-neutral-500">{record.createdAt.toLocaleString()}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* 5. MODAL: Add / Edit Employee */}
       {isEmployeeModalOpen && (

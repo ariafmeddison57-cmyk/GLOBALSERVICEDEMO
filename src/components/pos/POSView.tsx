@@ -40,12 +40,15 @@ export const POSView: React.FC = () => {
   const {
     userRole,
     currentPosUnitId,
+    selectedBranch,
     setCurrentPosUnitId,
     currentPosUnit,
     posUnits,
     loginAsCashier,
     loginAsAdmin,
     activeCashier,
+    staff,
+    createStaffConsumption,
     products,
     inventory,
     cart,
@@ -72,6 +75,9 @@ export const POSView: React.FC = () => {
   const [tableNumber, setTableNumber] = useState<string>('Table 05');
   const [customerName, setCustomerName] = useState<string>('');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [isStaffConsumption, setIsStaffConsumption] = useState(false);
+  const [selectedStaffId, setSelectedStaffId] = useState('');
+  const [staffConsumptionNotice, setStaffConsumptionNotice] = useState<string | null>(null);
   const [completedOrderModal, setCompletedOrderModal] = useState<Order | null>(null);
   const [isCashModalOpen, setIsCashModalOpen] = useState<boolean>(false);
   const [cashTendered, setCashTendered] = useState<number>(0);
@@ -124,6 +130,8 @@ export const POSView: React.FC = () => {
   ];
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartInternalCost = cart.reduce((sum, item) => sum + item.product.cost * item.quantity, 0);
+  const cartDisplayTotal = isStaffConsumption ? cartInternalCost : cartTotal;
 
   const stockRequirements = new Map<string, { name: string; nameAr?: string; unit: string; quantity: number }>();
   cart.forEach((cartItem) => {
@@ -141,7 +149,10 @@ export const POSView: React.FC = () => {
 
   const stockShortages = Array.from(stockRequirements.entries())
     .map(([inventoryItemId, requirement]) => {
-      const inventoryItem = inventory.find((item) => item.id === inventoryItemId);
+      const staffBranch = isStaffConsumption ? staff.find((member) => member.id === selectedStaffId)?.location : undefined;
+      const branchId = staffBranch || (selectedBranch === 'all' ? 'west-walk' : selectedBranch);
+      const branchBatch = inventory.find((item) => item.location === branchId && item.sourceInventoryItemId === inventoryItemId);
+      const inventoryItem = branchBatch || inventory.find((item) => item.id === inventoryItemId);
       const available = inventoryItem?.closingStock ?? 0;
       return {
         ...requirement,
@@ -169,6 +180,16 @@ export const POSView: React.FC = () => {
     const order = createOrder('cash', orderType, customerName || undefined, tableNumber);
     setCompletedOrderModal(order);
     setIsTabletCartOpen(false);
+  };
+
+  const handleStaffConsumption = () => {
+    if (!selectedStaffId || cart.length === 0 || stockShortages.length > 0) return;
+    const record = createStaffConsumption(selectedStaffId);
+    if (!record) return;
+    setStaffConsumptionNotice(t(`${record.quantity} item(s) recorded for ${record.staffName}.`, `تم تسجيل ${record.quantity} صنف للموظف ${record.staffName}.`));
+    setSelectedStaffId('');
+    setIsTabletCartOpen(false);
+    window.setTimeout(() => setStaffConsumptionNotice(null), 4000);
   };
 
   return (
@@ -446,22 +467,20 @@ export const POSView: React.FC = () => {
               </div>
             </div>
 
-            {/* Order Type Selector Pills */}
-            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-neutral-800 rounded-xl text-xs font-bold">
-              {(['dine-in', 'takeaway', 'talabat'] as OrderType[]).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setOrderType(type)}
-                  className={`py-1.5 rounded-lg capitalize transition-all ${
-                    orderType === type
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-neutral-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-neutral-400'
-                  }`}
-                >
-                  {type === 'dine-in' ? t('Dine-In', 'محلي') : type === 'takeaway' ? t('Takeaway', 'سفري') : 'Talabat'}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-neutral-800 rounded-xl text-xs font-bold">
+              <button onClick={() => setIsStaffConsumption(false)} className={`py-1.5 rounded-lg transition-all ${!isStaffConsumption ? 'bg-slate-900 text-white dark:bg-white dark:text-neutral-900 shadow-xs' : 'text-slate-500'}`}>{t('Customer Sale', 'طلب عميل')}</button>
+              <button onClick={() => { setIsStaffConsumption(true); setCustomerName(''); }} className={`py-1.5 rounded-lg transition-all ${isStaffConsumption ? 'bg-violet-700 text-white shadow-xs' : 'text-slate-500'}`}>{t('Staff Consumption', 'استهلاك موظف')}</button>
             </div>
+
+            {!isStaffConsumption && (
+              <>
+                <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-neutral-800 rounded-xl text-xs font-bold">
+                  {(['dine-in', 'takeaway', 'talabat'] as OrderType[]).map((type) => (
+                    <button key={type} onClick={() => setOrderType(type)} className={`py-1.5 rounded-lg capitalize transition-all ${orderType === type ? 'bg-slate-900 text-white dark:bg-white dark:text-neutral-900 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:text-neutral-400'}`}>
+                      {type === 'dine-in' ? t('Dine-In', 'محلي') : type === 'takeaway' ? t('Takeaway', 'سفري') : 'Talabat'}
+                    </button>
+                  ))}
+                </div>
 
             {/* Table / Customer quick fields */}
             <div className="mt-2 flex items-center gap-2">
@@ -480,6 +499,17 @@ export const POSView: React.FC = () => {
                 className="w-1/2 px-2.5 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-neutral-100"
               />
             </div>
+              </>
+            )}
+            {isStaffConsumption && (
+              <label className="mt-2 block text-[11px] font-bold text-violet-800 dark:text-violet-200">
+                {t('Employee receiving the item', 'الموظف المستلم للصنف')}
+                <select value={selectedStaffId} onChange={(event) => setSelectedStaffId(event.target.value)} className="mt-1 w-full px-2.5 py-2 text-xs rounded-xl bg-violet-50 dark:bg-neutral-800 border border-violet-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100">
+                  <option value="">{t('Select a staff member', 'اختر موظفًا')}</option>
+                  {staff.filter((member) => member.status !== 'Off Duty').map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
+                </select>
+              </label>
+            )}
           </div>
 
           {/* Cart Items List */}
@@ -503,11 +533,11 @@ export const POSView: React.FC = () => {
                         {t(item.product.name, item.product.nameAr)}
                       </h5>
                       <span className="text-[11px] font-mono text-slate-500">
-                        {formatCurrency(item.product.price)} × {item.quantity}
+                        {formatCurrency(isStaffConsumption ? item.product.cost : item.product.price)} × {item.quantity}
                       </span>
                     </div>
                     <span className="font-black text-xs text-slate-900 dark:text-neutral-100 font-mono">
-                      {formatCurrency(item.product.price * item.quantity)}
+                      {formatCurrency((isStaffConsumption ? item.product.cost : item.product.price) * item.quantity)}
                     </span>
                   </div>
 
@@ -566,18 +596,24 @@ export const POSView: React.FC = () => {
                 {cartNotice}
               </div>
             )}
+            {staffConsumptionNotice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" role="status">{staffConsumptionNotice}</div>}
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-slate-500 dark:text-neutral-400">
-                <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-                <span className="font-bold text-slate-800 dark:text-neutral-200 font-mono">{formatCurrency(cartSubtotal)}</span>
+                <span>{isStaffConsumption ? t('Internal cost estimate', 'تقدير التكلفة الداخلية') : t('Subtotal', 'المجموع الفرعي')}</span>
+                <span className="font-bold text-slate-800 dark:text-neutral-200 font-mono">{formatCurrency(isStaffConsumption ? cartInternalCost : cartSubtotal)}</span>
               </div>
               <div className="flex justify-between text-base font-black text-slate-900 dark:text-white pt-1.5 border-t border-slate-200 dark:border-neutral-700">
-                <span>{t('Total Due', 'الإجمالي المستحق')}</span>
-                <span className="font-mono text-slate-950 dark:text-white">{formatCurrency(cartTotal)}</span>
+                <span>{isStaffConsumption ? t('Staff item cost', 'تكلفة أصناف الموظف') : t('Total Due', 'الإجمالي المستحق')}</span>
+                <span className="font-mono text-slate-950 dark:text-white">{formatCurrency(isStaffConsumption ? cartInternalCost : cartTotal)}</span>
               </div>
             </div>
 
             {/* High-Contrast Tender Buttons */}
+            {isStaffConsumption ? (
+              <button disabled={cart.length === 0 || stockShortages.length > 0 || !selectedStaffId} onClick={handleStaffConsumption} className="w-full py-3 px-3 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
+                <Coffee className="w-4 h-4" />{t('Record Staff Consumption', 'تسجيل استهلاك الموظف')}
+              </button>
+            ) : (
             <div className="grid grid-cols-3 gap-2 pt-1">
               <button
                 disabled={cart.length === 0 || stockShortages.length > 0}
@@ -606,6 +642,7 @@ export const POSView: React.FC = () => {
                 <span>Talabat</span>
               </button>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -620,7 +657,7 @@ export const POSView: React.FC = () => {
             <ShoppingBag className="w-4 h-4" />
             <span>{totalCartCount} {t('Items in Cart', 'عناصر')}</span>
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="font-mono text-amber-300 dark:text-amber-600">{formatCurrency(cartTotal)}</span>
+            <span className="font-mono text-amber-300 dark:text-amber-600">{formatCurrency(cartDisplayTotal)}</span>
           </button>
         </div>
       )}

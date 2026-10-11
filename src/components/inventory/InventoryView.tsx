@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Boxes,
+  Plus,
   AlertTriangle,
   Clock,
   ClipboardList,
@@ -47,9 +48,14 @@ export const InventoryView: React.FC = () => {
     setCurrentView,
     purchases,
     isRTL,
+    activeCashier,
+    products,
+    inventoryTransfers,
+    createInventoryTransfer,
+    receiveInventoryTransfer,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'stock' | 'comparison' | 'damaged'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'comparison' | 'damaged' | 'transfers'>('stock');
   const [comparisonFilter, setComparisonFilter] = useState<'all' | 'variance' | 'matched'>('all');
   const [inlineActualCounts, setInlineActualCounts] = useState<{ [id: string]: string }>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -77,6 +83,13 @@ export const InventoryView: React.FC = () => {
   const [damageBranch, setDamageBranch] = useState<BranchId>('west-walk');
   const [damageLoggedBy, setDamageLoggedBy] = useState<string>('Store Shift Lead');
   const [damageNotes, setDamageNotes] = useState<string>('');
+  const [damageKind, setDamageKind] = useState<'raw' | 'menu'>('raw');
+  const [damageProductId, setDamageProductId] = useState<string>('');
+  const [wasteFilter, setWasteFilter] = useState<'all' | 'raw' | 'menu'>('all');
+  const [transferItemId, setTransferItemId] = useState<string>(inventory.find((item) => item.location === 'main-store')?.id || '');
+  const [transferDestination, setTransferDestination] = useState<BranchId>('west-walk');
+  const [transferQuantity, setTransferQuantity] = useState<number>(1);
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({});
 
   // Current timestamp for comparisons
   const now = new Date();
@@ -328,25 +341,65 @@ export const InventoryView: React.FC = () => {
 
   const handleSubmitDamage = (e: React.FormEvent) => {
     e.preventDefault();
-    const item = inventory.find((i) => i.id === damageItemId);
-    if (!item || damageQty <= 0) return;
+    if (damageQty <= 0) return;
 
-    logDamagedStock({
-      inventoryItemId: item.id,
-      itemName: item.name,
-      itemNameAr: item.nameAr,
-      quantity: damageQty,
-      unit: item.unit,
-      unitCost: item.unitCost,
-      totalFinancialLoss: parseFloat((damageQty * item.unitCost).toFixed(2)),
-      reason: damageReason,
-      branchId: damageBranch,
-      loggedBy: damageLoggedBy,
-      notes: damageNotes.trim() || undefined,
-    });
+    if (damageKind === 'menu') {
+      const product = products.find((item) => item.id === damageProductId);
+      if (!product) return;
+      const hasEnoughIngredients = (product.recipe?.ingredients || []).every((ingredient) => {
+        const branchBatch = inventory.find((item) => item.location === damageBranch && item.sourceInventoryItemId === ingredient.inventoryItemId);
+        const stockItem = branchBatch || inventory.find((item) => item.id === ingredient.inventoryItemId);
+        return stockItem && stockItem.closingStock >= ingredient.portionQty * damageQty;
+      });
+      if (!hasEnoughIngredients) {
+        setToastMessage(t('Not enough raw stock to write off this menu item.', 'المخزون الخام غير كافٍ لتسجيل هدر هذا الصنف.'));
+        return;
+      }
+      logDamagedStock({
+        inventoryItemId: '',
+        itemName: product.name,
+        itemNameAr: product.nameAr,
+        quantity: damageQty,
+        unit: 'portion',
+        unitCost: product.cost,
+        totalFinancialLoss: parseFloat((damageQty * product.cost).toFixed(2)),
+        reason: damageReason,
+        branchId: damageBranch,
+        loggedBy: damageLoggedBy,
+        notes: damageNotes.trim() || undefined,
+        wasteType: 'menu',
+        productId: product.id,
+      });
+    } else {
+      const item = inventory.find((i) => i.id === damageItemId);
+      if (!item || damageQty > item.closingStock) return;
+      logDamagedStock({
+        inventoryItemId: item.id,
+        itemName: item.name,
+        itemNameAr: item.nameAr,
+        quantity: damageQty,
+        unit: item.unit,
+        unitCost: item.unitCost,
+        totalFinancialLoss: parseFloat((damageQty * item.unitCost).toFixed(2)),
+        reason: damageReason,
+        branchId: damageBranch,
+        loggedBy: damageLoggedBy,
+        notes: damageNotes.trim() || undefined,
+        wasteType: 'raw',
+      });
+    }
 
     setIsDamageModalOpen(false);
     setDamageNotes('');
+  };
+
+  const handleCreateTransfer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (createInventoryTransfer(transferItemId, transferDestination, transferQuantity)) {
+      setToastMessage(t('Transfer dispatched. Receiving branch stock updates when it is received.', 'تم إرسال التحويل. يتم تحديث مخزون الفرع عند الاستلام.'));
+    } else {
+      setToastMessage(t('Check the source stock and transfer quantity.', 'تحقق من رصيد المخزن والكمية المحولة.'));
+    }
   };
 
   return (
@@ -415,11 +468,11 @@ export const InventoryView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsDamageModalOpen(true)}
+            onClick={() => { setDamageKind('raw'); setIsDamageModalOpen(true); }}
             className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-2 active:scale-95"
           >
             <AlertTriangle className="w-4 h-4" />
-            <span>{t('+ Log Damaged / Expired Goods', '+ تسجيل بضاعة تالفة / هدر')}</span>
+            <span>{t('+ Record Waste', '+ تسجيل هدر')}</span>
           </button>
         </div>
       </div>
@@ -552,6 +605,14 @@ export const InventoryView: React.FC = () => {
       {/* 3. Section Tabs: Stock Ledger vs Comparison vs Damaged Goods Log */}
       <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-neutral-800 pb-2">
         <button
+          onClick={() => setActiveTab('transfers')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'transfers' ? 'bg-violet-600 text-white shadow-xs' : 'text-zinc-500 hover:text-violet-600 dark:text-neutral-400'}`}
+        >
+          <ArrowRight className="w-4 h-4" />
+          <span>{t('Branch Transfers', 'تحويلات الفروع')}</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200">{inventoryTransfers.length}</span>
+        </button>
+        <button
           onClick={() => setActiveTab('stock')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'stock'
@@ -594,12 +655,81 @@ export const InventoryView: React.FC = () => {
           }`}
         >
           <AlertTriangle className="w-4 h-4" />
-          <span>{t('Damaged Goods & Loss Write-Offs', 'سجل البضائع التالفة والهدر المالي')}</span>
+          <span>{t('Waste Records', 'سجلات الهدر')}</span>
           <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200">
             {damagedGoods.length}
           </span>
         </button>
       </div>
+
+      {activeTab === 'transfers' && (
+        <div className="space-y-4">
+          <section className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 flex items-center justify-center"><Boxes className="w-5 h-5" /></div>
+              <div>
+                <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{t('Send stock from the central store', 'إرسال المخزون من المخزن المركزي')}</h3>
+                <p className="text-xs text-neutral-500 mt-1">{t('Stock leaves Central Commissary when dispatched and is added to the branch when received.', 'يخصم المخزون من المستودع المركزي عند الإرسال ويضاف للفرع عند الاستلام.')}</p>
+              </div>
+            </div>
+            <form onSubmit={handleCreateTransfer} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
+              <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                {t('Central store item', 'صنف المخزن المركزي')}
+                <select value={transferItemId} onChange={(event) => setTransferItemId(event.target.value)} required className="mt-1 w-full p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs">
+                  {inventory.filter((item) => item.location === 'main-store').map((item) => <option key={item.id} value={item.id}>{item.name} — {item.closingStock} {item.unit}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                {t('Destination branch', 'الفرع المستلم')}
+                <select value={transferDestination} onChange={(event) => setTransferDestination(event.target.value as BranchId)} className="mt-1 w-full p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs">
+                  {BRANCHES.filter((branch) => branch.id !== 'main-store').map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                {t('Quantity to send', 'الكمية المرسلة')}
+                <input type="number" min="0.01" max={inventory.find((item) => item.id === transferItemId)?.closingStock || 0} step="0.01" value={transferQuantity} onChange={(event) => setTransferQuantity(Number(event.target.value) || 0)} required className="mt-1 w-full p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-mono" />
+              </label>
+              <button type="submit" disabled={!inventory.some((item) => item.id === transferItemId && item.closingStock >= transferQuantity && transferQuantity > 0)} className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-bold flex items-center justify-center gap-2">
+                <ArrowRight className="w-4 h-4" />{t('Dispatch Transfer', 'إرسال التحويل')}
+              </button>
+            </form>
+          </section>
+
+          <section className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{t('Transfer History', 'سجل التحويلات')}</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 dark:bg-neutral-800/60 text-neutral-500 uppercase text-[10px]"><tr>
+                  <th className="p-3">{t('Item', 'الصنف')}</th><th className="p-3">{t('Route', 'المسار')}</th><th className="p-3">{t('Sent', 'المرسل')}</th><th className="p-3">{t('Received', 'المستلم')}</th><th className="p-3">{t('Status', 'الحالة')}</th><th className="p-3">{t('Action', 'الإجراء')}</th>
+                </tr></thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {inventoryTransfers.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-neutral-500">{t('No transfers yet. Dispatch a shipment above to get started.', 'لا توجد تحويلات بعد. أرسل شحنة من النموذج أعلاه للبدء.')}</td></tr> : inventoryTransfers.map((transfer) => {
+                    const source = BRANCHES.find((branch) => branch.id === transfer.sourceBranchId)?.name || transfer.sourceBranchId;
+                    const destination = BRANCHES.find((branch) => branch.id === transfer.destinationBranchId)?.name || transfer.destinationBranchId;
+                    return <tr key={transfer.id}>
+                      <td className="p-3"><span className="font-bold text-neutral-900 dark:text-neutral-100 block">{transfer.itemName}</span><span className="text-neutral-500">{transfer.quantity} {transfer.unit}</span></td>
+                      <td className="p-3">{source} <ArrowRight className="inline w-3 h-3 mx-1" /> {destination}</td>
+                      <td className="p-3"><span className="block">{transfer.sentBy}</span><span className="text-neutral-500">{transfer.sentAt}</span></td>
+                      <td className="p-3">{transfer.receivedQuantity !== undefined ? `${transfer.receivedQuantity} ${transfer.unit} · ${transfer.receivedBy}` : '—'}</td>
+                      <td className="p-3"><span className={`px-2 py-1 rounded-full text-[10px] font-bold ${transfer.status === 'Received' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'}`}>{t(transfer.status, transfer.status === 'Received' ? 'تم الاستلام' : 'في الطريق')}</span></td>
+                      <td className="p-3">{transfer.status === 'In Transit' ? <div className="flex items-center gap-1.5">
+                        <input aria-label={t(`Received quantity for ${transfer.id}`, `الكمية المستلمة ${transfer.id}`)} type="number" min="0.01" max={transfer.quantity} step="0.01" value={receiveQuantities[transfer.id] ?? transfer.quantity} onChange={(event) => setReceiveQuantities((prev) => ({ ...prev, [transfer.id]: Number(event.target.value) || 0 }))} className="w-16 px-2 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[10px]" />
+                        <button onClick={() => {
+                        const quantity = receiveQuantities[transfer.id] ?? transfer.quantity;
+                        if (receiveInventoryTransfer(transfer.id, quantity, activeCashier)) setToastMessage(t('Transfer received and branch stock updated.', 'تم استلام التحويل وتحديث مخزون الفرع.'));
+                        else setToastMessage(t('Enter a received quantity up to the dispatched amount.', 'أدخل كمية مستلمة لا تتجاوز الكمية المرسلة.'));
+                      }} className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold">{t('Receive', 'استلام')}</button>
+                      </div> : <span className="text-neutral-400">{transfer.receivedAt}</span>}</td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* TAB 1: Main Inventory Ledger with System vs Actual Count & Purchases Expiry */}
       {activeTab === 'stock' && (
@@ -1377,6 +1507,16 @@ export const InventoryView: React.FC = () => {
       )}
       {activeTab === 'damaged' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              {(['all', 'menu', 'raw'] as const).map((kind) => (
+                <button key={kind} onClick={() => setWasteFilter(kind)} className={`px-3 py-2 rounded-xl text-xs font-bold ${wasteFilter === kind ? 'bg-rose-600 text-white' : 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300'}`}>
+                  {kind === 'all' ? t('All Waste', 'كل الهدر') : kind === 'menu' ? t('Menu Waste', 'هدر الوجبات') : t('Raw Waste', 'هدر المواد الخام')}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setDamageKind('raw'); setIsDamageModalOpen(true); }} className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{t('Record Waste', 'تسجيل هدر')}</button>
+          </div>
           <div className="bg-rose-50/40 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-600 flex items-center justify-center font-bold">
@@ -1422,7 +1562,7 @@ export const InventoryView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-neutral-800 font-medium">
-                  {damagedGoods.map((dmg) => {
+                  {damagedGoods.filter((dmg) => wasteFilter === 'all' || (dmg.wasteType || 'raw') === wasteFilter).map((dmg) => {
                     const branch = BRANCHES.find((b) => b.id === dmg.branchId);
 
                     return (
@@ -1435,6 +1575,7 @@ export const InventoryView: React.FC = () => {
                           <span className="font-bold text-neutral-900 dark:text-neutral-100 block">
                             {language === 'ar' ? dmg.itemNameAr : dmg.itemName}
                           </span>
+                          <span className="text-[10px] uppercase tracking-wide text-rose-600">{(dmg.wasteType || 'raw') === 'menu' ? t('Menu item', 'صنف قائمة') : t('Raw material', 'مادة خام')}</span>
                           {dmg.notes && (
                             <span className="text-[11px] text-zinc-400 block mt-0.5 italic">
                               "{dmg.notes}"
@@ -1593,10 +1734,10 @@ export const InventoryView: React.FC = () => {
               <div>
                 <h3 className="text-base font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5" />
-                  <span>{t('Record Damaged / Expired Stock', 'تسجيل بضاعة تالفة / هدر')}</span>
+                  <span>{t('Record Waste', 'تسجيل الهدر')}</span>
                 </h3>
                 <p className="text-xs text-zinc-500">
-                  {t('Reduces inventory stock and logs financial write-off', 'خصم فوري من المخزون وتدوين الخسارة المالية')}
+                  {t('Choose a prepared menu item or a raw ingredient to write off.', 'اختر صنفًا جاهزًا من القائمة أو مادة خام لتسجيل الهدر.')}
                 </p>
               </div>
               <button
@@ -1609,33 +1750,36 @@ export const InventoryView: React.FC = () => {
 
             <form onSubmit={handleSubmitDamage} className="space-y-3.5">
               <div>
+                <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">{t('Waste type', 'نوع الهدر')}</label>
+                <select value={damageKind} onChange={(event) => setDamageKind(event.target.value as 'raw' | 'menu')} className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100">
+                  <option value="menu">{t('Menu waste — prepared food or drink', 'هدر قائمة — طعام أو مشروب جاهز')}</option>
+                  <option value="raw">{t('Raw waste — ingredient or stock item', 'هدر خام — مكون أو صنف مخزون')}</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                  {t('Select Inventory Item', 'اختر المادة من المخزون')}
+                  {damageKind === 'menu' ? t('Select Menu Item', 'اختر صنف القائمة') : t('Select Raw Inventory Item', 'اختر مادة خام من المخزون')}
                 </label>
-                <select
-                  value={damageItemId}
-                  onChange={(e) => {
+                {damageKind === 'menu' ? (
+                  <select value={damageProductId} onChange={(event) => setDamageProductId(event.target.value)} required className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100">
+                    <option value="">{t('Choose menu item', 'اختر صنف القائمة')}</option>
+                    {products.map((product) => <option key={product.id} value={product.id}>{product.name} · {formatCurrency(product.cost)} {t('cost', 'تكلفة')}</option>)}
+                  </select>
+                ) : (
+                  <select value={damageItemId} onChange={(e) => {
                     setDamageItemId(e.target.value);
                     const it = inventory.find((i) => i.id === e.target.value);
-                    if (it) {
-                      setDamageBranch(it.location);
-                      setDamageQty(Math.min(it.closingStock, 1));
-                    }
-                  }}
-                  className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                >
-                  {inventory.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name} (Stock: {inv.closingStock} {inv.unit} · {formatCurrency(inv.unitCost)}/{inv.unit})
-                    </option>
-                  ))}
-                </select>
+                    if (it) { setDamageBranch(it.location); setDamageQty(Math.min(it.closingStock, 1)); }
+                  }} className="w-full p-2.5 text-xs rounded-xl bg-zinc-50 dark:bg-neutral-800 border border-zinc-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100">
+                    {inventory.map((inv) => <option key={inv.id} value={inv.id}>{inv.name} (Stock: {inv.closingStock} {inv.unit} · {formatCurrency(inv.unitCost)}/{inv.unit})</option>)}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-zinc-600 dark:text-neutral-300 block mb-1">
-                    {t('Quantity Damaged', 'الكمية التالفة')} ({inventory.find((i) => i.id === damageItemId)?.unit || 'units'})
+                    {t('Quantity Wasted', 'كمية الهدر')} ({damageKind === 'menu' ? t('portions', 'حصص') : inventory.find((i) => i.id === damageItemId)?.unit || 'units'})
                   </label>
                   <input
                     type="number"
@@ -1704,11 +1848,12 @@ export const InventoryView: React.FC = () => {
               {/* Financial loss preview */}
               {(() => {
                 const item = inventory.find((i) => i.id === damageItemId);
-                const loss = (item ? item.unitCost : 0) * damageQty;
+                const product = products.find((p) => p.id === damageProductId);
+                const loss = (damageKind === 'menu' ? product?.cost || 0 : item?.unitCost || 0) * damageQty;
                 return (
                   <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between text-xs">
                     <span className="text-rose-700 dark:text-rose-300 font-semibold">
-                      {t('Total Cost Written-Off:', 'إجمالي الخسارة المشطوبة:')}
+                      {t('Estimated Cost Written-Off:', 'التكلفة التقديرية للهدر:')}
                     </span>
                     <span className="font-mono font-black text-rose-700 dark:text-rose-400 text-sm">
                       {formatCurrency(loss)}

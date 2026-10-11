@@ -15,6 +15,8 @@ import {
   StaffMember,
   ExpenseRecord,
   DamagedInventoryRecord,
+  InventoryTransferRecord,
+  StaffConsumptionRecord,
 } from '../types';
 import {
   BRANDS,
@@ -124,6 +126,11 @@ interface AppContextType {
   addInventoryItem: (item: Omit<InventoryItem, 'id'> & { id?: string }) => InventoryItem;
   damagedGoods: DamagedInventoryRecord[];
   logDamagedStock: (record: Omit<DamagedInventoryRecord, 'id' | 'date'>) => void;
+  inventoryTransfers: InventoryTransferRecord[];
+  createInventoryTransfer: (inventoryItemId: string, destinationBranchId: BranchId, quantity: number) => boolean;
+  receiveInventoryTransfer: (transferId: string, receivedQuantity: number, receivedBy: string) => boolean;
+  staffConsumptionRecords: StaffConsumptionRecord[];
+  createStaffConsumption: (staffId: string) => StaffConsumptionRecord | null;
   totalDamagedLoss: number;
 
   // Purchases & Expenses
@@ -207,6 +214,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   );
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
   const [damagedGoods, setDamagedGoods] = useState<DamagedInventoryRecord[]>(INITIAL_DAMAGED_GOODS);
+  const [inventoryTransfers, setInventoryTransfers] = useState<InventoryTransferRecord[]>([]);
+  const [staffConsumptionRecords, setStaffConsumptionRecords] = useState<StaffConsumptionRecord[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>(STAFF_MEMBERS);
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
   const [lastCreatedOrder, setLastCreatedOrder] = useState<Order | null>(null);
@@ -382,9 +391,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (recipe && recipe.ingredients) {
         recipe.ingredients.forEach((ing) => {
           const usedAmt = ing.portionQty * cartItem.quantity;
-          const current = recipeDeductionsMap.get(ing.inventoryItemId) || { name: ing.name, totalQty: 0, unit: ing.unit };
+          const branchStock = inventory.find((item) => item.location === effectiveBranch && item.sourceInventoryItemId === ing.inventoryItemId);
+          const stockItemId = branchStock?.id || ing.inventoryItemId;
+          const current = recipeDeductionsMap.get(stockItemId) || { name: ing.name, totalQty: 0, unit: ing.unit };
           current.totalQty += usedAmt;
-          recipeDeductionsMap.set(ing.inventoryItemId, current);
+          recipeDeductionsMap.set(stockItemId, current);
         });
       }
     });
@@ -517,21 +528,122 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: `DMG-${200 + damagedGoods.length + 1}`,
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
-    // 1. Immediately reduce closing stock of this item in the inventory ledger
-    setInventory((prev) =>
-      prev.map((item) => {
-        if (item.id === record.inventoryItemId) {
-          const newClosing = Math.max(0, parseFloat((item.closingStock - record.quantity).toFixed(2)));
-          return {
-            ...item,
-            closingStock: newClosing,
-          };
-        }
-        return item;
-      })
-    );
+    if (record.wasteType === 'menu' && record.productId) {
+      const product = products.find((item) => item.id === record.productId);
+      const ingredientUse = new Map<string, number>();
+      product?.recipe?.ingredients.forEach((ingredient) => {
+        const branchStock = inventory.find((item) => item.location === record.branchId && item.sourceInventoryItemId === ingredient.inventoryItemId);
+        const stockItemId = branchStock?.id || ingredient.inventoryItemId;
+        ingredientUse.set(stockItemId, (ingredientUse.get(stockItemId) || 0) + ingredient.portionQty * record.quantity);
+      });
+      setInventory((prev) => prev.map((item) => {
+        const amount = ingredientUse.get(item.id);
+        return amount ? { ...item, used: item.used + amount, closingStock: Math.max(0, item.closingStock - amount) } : item;
+      }));
+    } else if (record.inventoryItemId) {
+      setInventory((prev) => prev.map((item) => item.id === record.inventoryItemId
+        ? { ...item, closingStock: Math.max(0, parseFloat((item.closingStock - record.quantity).toFixed(2))) }
+        : item));
+    }
     // 2. Append to damaged goods ledger (financial loss write-off)
     setDamagedGoods((prev) => [newRecord, ...prev]);
+  };
+
+  const createInventoryTransfer = (inventoryItemId: string, destinationBranchId: BranchId, quantity: number) => {
+    const sourceItem = inventory.find((item) => item.id === inventoryItemId);
+    if (!sourceItem || sourceItem.location !== 'main-store' || destinationBranchId === 'main-store' || quantity <= 0 || quantity > sourceItem.closingStock) return false;
+    const record: InventoryTransferRecord = {
+      id: `TRF-${300 + inventoryTransfers.length + 1}`,
+      inventoryItemId,
+      itemName: sourceItem.name,
+      quantity,
+      unit: sourceItem.unit,
+      sourceBranchId: sourceItem.location,
+      destinationBranchId,
+      status: 'In Transit',
+      sentAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      sentBy: activeCashier,
+    };
+    setInventory((prev) => prev.map((item) => item.id === inventoryItemId ? { ...item, closingStock: item.closingStock - quantity } : item));
+    setInventoryTransfers((prev) => [record, ...prev]);
+    playSound('success');
+    return true;
+  };
+
+  const receiveInventoryTransfer = (transferId: string, receivedQuantity: number, receivedBy: string) => {
+    const transfer = inventoryTransfers.find((item) => item.id === transferId);
+    const sourceItem = transfer && inventory.find((item) => item.id === transfer.inventoryItemId);
+    if (!transfer || !sourceItem || transfer.status !== 'In Transit' || receivedQuantity <= 0 || receivedQuantity > transfer.quantity) return false;
+
+    setInventory((prev) => {
+      const matchingBatch = prev.find((item) =>
+        item.location === transfer.destinationBranchId &&
+        (item.sourceInventoryItemId === sourceItem.id || item.name === sourceItem.name) &&
+        item.expiryDate === sourceItem.expiryDate &&
+        item.batchNumber === sourceItem.batchNumber
+      );
+      if (matchingBatch) {
+        return prev.map((item) => item.id === matchingBatch.id ? {
+          ...item,
+          sourceInventoryItemId: item.sourceInventoryItemId || sourceItem.id,
+          closingStock: item.closingStock + receivedQuantity,
+        } : item);
+      }
+      const destinationItem: InventoryItem = {
+        ...sourceItem,
+        id: `inv-transfer-${Date.now()}`,
+        location: transfer.destinationBranchId,
+        sourceInventoryItemId: sourceItem.id,
+        openingStock: 0,
+        purchased: 0,
+        used: 0,
+        closingStock: receivedQuantity,
+        actualClosingStock: receivedQuantity,
+      };
+      return [...prev, destinationItem].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setInventoryTransfers((prev) => prev.map((item) => item.id === transferId ? {
+      ...item,
+      status: 'Received',
+      receivedAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      receivedQuantity,
+      receivedBy,
+    } : item));
+    playSound('success');
+    return true;
+  };
+
+  const createStaffConsumption = (staffId: string) => {
+    const member = staff.find((item) => item.id === staffId);
+    if (!member || cart.length === 0) return null;
+    const ingredientUse = new Map<string, number>();
+    cart.forEach((cartItem) => cartItem.product.recipe?.ingredients.forEach((ingredient) => {
+      const branchStock = inventory.find((item) => item.location === member.location && item.sourceInventoryItemId === ingredient.inventoryItemId);
+      const stockItemId = branchStock?.id || ingredient.inventoryItemId;
+      ingredientUse.set(stockItemId, (ingredientUse.get(stockItemId) || 0) + ingredient.portionQty * cartItem.quantity);
+    }));
+    const deductions = Array.from(ingredientUse.entries());
+    if (deductions.some(([id, amount]) => (inventory.find((item) => item.id === id)?.closingStock ?? 0) < amount)) return null;
+    setInventory((prev) => prev.map((item) => {
+      const amount = ingredientUse.get(item.id);
+      return amount ? { ...item, used: item.used + amount, closingStock: Math.max(0, item.closingStock - amount) } : item;
+    }));
+    const record: StaffConsumptionRecord = {
+      id: `SC-${500 + staffConsumptionRecords.length + 1}`,
+      staffId,
+      staffName: member.name,
+      branchId: member.location,
+      posUnitId: cart[0].product.posUnitId,
+      items: [...cart],
+      quantity: cart.reduce((sum, item) => sum + item.quantity, 0),
+      cost: parseFloat(cart.reduce((sum, item) => sum + item.product.cost * item.quantity, 0).toFixed(2)),
+      loggedBy: activeCashier,
+      createdAt: new Date(),
+    };
+    setStaffConsumptionRecords((prev) => [record, ...prev]);
+    setCart([]);
+    playSound('success');
+    return record;
   };
 
   const totalDamagedLoss = damagedGoods.reduce((sum, d) => sum + d.totalFinancialLoss, 0);
@@ -875,6 +987,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addInventoryItem,
         damagedGoods,
         logDamagedStock,
+        inventoryTransfers,
+        createInventoryTransfer,
+        receiveInventoryTransfer,
+        staffConsumptionRecords,
+        createStaffConsumption,
         totalDamagedLoss,
         purchases,
         addPurchaseOrder,

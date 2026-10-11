@@ -153,6 +153,7 @@ export interface InventoryItem {
   lastPurchaseRef?: string; // Purchase voucher or invoice reference
   batchNumber?: string;
   supplier: string;
+  sourceInventoryItemId?: string;
 }
 
 export type DamageReason = 
@@ -177,6 +178,38 @@ export interface DamagedInventoryRecord {
   loggedBy: string;
   date: string;
   notes?: string;
+  wasteType?: 'raw' | 'menu';
+  productId?: string;
+}
+
+export interface InventoryTransferRecord {
+  id: string;
+  inventoryItemId: string;
+  destinationItemId?: string;
+  itemName: string;
+  quantity: number;
+  unit: MeasurementUnit;
+  sourceBranchId: BranchId;
+  destinationBranchId: BranchId;
+  status: 'In Transit' | 'Received';
+  sentAt: string;
+  receivedAt?: string;
+  receivedQuantity?: number;
+  sentBy: string;
+  receivedBy?: string;
+}
+
+export interface StaffConsumptionRecord {
+  id: string;
+  staffId: string;
+  staffName: string;
+  branchId: BranchId;
+  posUnitId: PosUnitId;
+  items: CartItem[];
+  quantity: number;
+  cost: number;
+  loggedBy: string;
+  createdAt: Date;
 }
 
 export type ExpenseCategory = 
