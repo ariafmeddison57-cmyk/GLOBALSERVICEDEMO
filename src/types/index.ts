@@ -292,17 +292,6 @@ export interface StaffShift {
   status: 'Draft' | 'Published';
 }
 
-export interface StaffTimesheet {
-  id: string;
-  staffId: string;
-  shiftId?: string;
-  date: string;
-  clockIn: string;
-  clockOut?: string;
-  status: 'Open' | 'Pending Review' | 'Approved';
-  note?: string;
-}
-
 export interface PayrollRecord {
   employeeId: string;
   employeeName: string;

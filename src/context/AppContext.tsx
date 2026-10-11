@@ -18,7 +18,6 @@ import {
   InventoryTransferRecord,
   StaffConsumptionRecord,
   StaffShift,
-  StaffTimesheet,
 } from '../types';
 import {
   BRANDS,
@@ -39,11 +38,6 @@ export interface RecipeDeductionNotice {
 }
 
 const APP_SETTINGS_KEY = 'globalservices-app-settings-v1';
-const getLocalDateKey = () => {
-  const date = new Date();
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10);
-};
 interface SavedAppSettings {
   language: 'en' | 'ar';
   theme: 'light' | 'dark';
@@ -163,10 +157,6 @@ interface AppContextType {
   staffShifts: StaffShift[];
   addStaffShift: (shift: Omit<StaffShift, 'id'>) => void;
   updateStaffShift: (id: string, updates: Partial<StaffShift>) => void;
-  staffTimesheets: StaffTimesheet[];
-  clockInStaff: (staffId: string, shiftId?: string) => void;
-  clockOutStaff: (staffId: string) => void;
-  reviewStaffTimesheet: (id: string) => void;
 
   // Sales Tracking & Live POS metrics
   totalTodaySales: number;
@@ -232,7 +222,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [staffConsumptionRecords, setStaffConsumptionRecords] = useState<StaffConsumptionRecord[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>(STAFF_MEMBERS);
   const [staffShifts, setStaffShifts] = useState<StaffShift[]>([]);
-  const [staffTimesheets, setStaffTimesheets] = useState<StaffTimesheet[]>([]);
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
   const [lastCreatedOrder, setLastCreatedOrder] = useState<Order | null>(null);
   const [lastRecipeDeduction, setLastRecipeDeduction] = useState<RecipeDeductionNotice | null>(null);
@@ -897,33 +886,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStaffShifts((prev) => prev.map((shift) => shift.id === id ? { ...shift, ...updates } : shift));
   };
 
-  const clockInStaff = (staffId: string, shiftId?: string) => {
-    const today = getLocalDateKey();
-    const open = staffTimesheets.some((entry) => entry.staffId === staffId && !entry.clockOut);
-    if (open) return;
-    setStaffTimesheets((prev) => [{
-      id: `TIME-${Date.now()}`, staffId, shiftId, date: today,
-      clockIn: new Date().toISOString(), status: 'Open',
-    }, ...prev]);
-    updateStaffStatus(staffId, 'On Shift');
-    playSound('success');
-  };
-
-  const clockOutStaff = (staffId: string) => {
-    const open = staffTimesheets.find((entry) => entry.staffId === staffId && !entry.clockOut);
-    if (!open) return;
-    setStaffTimesheets((prev) => prev.map((entry) => entry.id === open.id
-      ? { ...entry, clockOut: new Date().toISOString(), status: 'Pending Review' }
-      : entry));
-    updateStaffStatus(staffId, 'Off Duty');
-    playSound('success');
-  };
-
-  const reviewStaffTimesheet = (id: string) => {
-    setStaffTimesheets((prev) => prev.map((entry) => entry.id === id ? { ...entry, status: 'Approved' } : entry));
-    playSound('success');
-  };
-
   // Products & Menu Recipe Operations
   const addProduct = (prodData: Omit<Product, 'id'>): Product => {
     playSound('success');
@@ -1064,10 +1026,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         staffShifts,
         addStaffShift,
         updateStaffShift,
-        staffTimesheets,
-        clockInStaff,
-        clockOutStaff,
-        reviewStaffTimesheet,
         totalTodaySales,
         totalMonthlySales,
         liveSessionSalesTotal,
