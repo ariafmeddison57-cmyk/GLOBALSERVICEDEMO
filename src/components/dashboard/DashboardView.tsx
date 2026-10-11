@@ -319,7 +319,7 @@ export const DashboardView: React.FC = () => {
               </div>
 
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
                   {kpi.label}
                 </span>
                 <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight mt-0.5 font-mono">
@@ -344,7 +344,7 @@ export const DashboardView: React.FC = () => {
                 <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                   {t('Sales Overview & Revenue Trends', 'نظرة عامة على الإيرادات والمبيعات')}
                 </h3>
-                <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">
+                <p className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-neutral-400 font-semibold mt-0.5">
                   {t('OCTOBER 2026 • CURRENT VS PREVIOUS MONTH', 'أكتوبر ٢٠٢٦ • مقارنة بالشهر السابق')}
                 </p>
               </div>
@@ -392,19 +392,19 @@ export const DashboardView: React.FC = () => {
                 <line x1="50" y1="220" x2="670" y2="220" stroke="#E2E8F0" strokeWidth="1" className="dark:stroke-neutral-800" />
 
                 {/* Y-axis labels */}
-                <text x="42" y="44" textAnchor="end" className="text-[10px] fill-slate-400 font-mono">
+                <text x="42" y="44" textAnchor="end" className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-mono">
                   {chartMetric === 'revenue' ? '50k' : '1.5k'}
                 </text>
-                <text x="42" y="89" textAnchor="end" className="text-[10px] fill-slate-400 font-mono">
+                <text x="42" y="89" textAnchor="end" className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-mono">
                   {chartMetric === 'revenue' ? '37k' : '1.1k'}
                 </text>
-                <text x="42" y="134" textAnchor="end" className="text-[10px] fill-slate-400 font-mono">
+                <text x="42" y="134" textAnchor="end" className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-mono">
                   {chartMetric === 'revenue' ? '25k' : '750'}
                 </text>
-                <text x="42" y="179" textAnchor="end" className="text-[10px] fill-slate-400 font-mono">
+                <text x="42" y="179" textAnchor="end" className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-mono">
                   {chartMetric === 'revenue' ? '12k' : '370'}
                 </text>
-                <text x="42" y="224" textAnchor="end" className="text-[10px] fill-slate-400 font-mono">
+                <text x="42" y="224" textAnchor="end" className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-mono">
                   0
                 </text>
 
@@ -439,7 +439,7 @@ export const DashboardView: React.FC = () => {
                         x={pt.x}
                         y="244"
                         textAnchor="middle"
-                        className="text-[10px] fill-slate-400 font-medium"
+                        className="text-[10px] fill-slate-400 dark:fill-neutral-400 font-medium"
                       >
                         {pt.label}
                       </text>
@@ -489,7 +489,7 @@ export const DashboardView: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-neutral-400 font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-1 bg-[#2563EB] rounded-full inline-block" />
                 <span>{t('October 2026', 'أكتوبر ٢٠٢٦')}</span>
@@ -509,7 +509,7 @@ export const DashboardView: React.FC = () => {
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                 {t('Sales by Brand', 'المبيعات حسب العلامة')}
               </h3>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
                 5 BRANDS
               </span>
             </div>
@@ -540,7 +540,7 @@ export const DashboardView: React.FC = () => {
               </svg>
 
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-neutral-400">
                   {t('TOTAL MTD', 'إجمالي الشهر')}
                 </span>
                 <span className="text-base font-black text-slate-900 dark:text-white font-mono">
@@ -575,10 +575,10 @@ export const DashboardView: React.FC = () => {
       {/* 3. BRAND PERFORMANCE ROW: 5 cards horizontal */}
       <div>
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-500">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
             {t('PORTFOLIO BRAND PERFORMANCE', 'أداء العلامات التجارية')}
           </h3>
-          <span className="text-[11px] text-slate-400 font-medium">
+          <span className="text-[11px] text-slate-400 dark:text-neutral-400 font-medium">
             {t('5 Business Units in Qatar', '٥ وحدات أعمال في قطر')}
           </span>
         </div>
@@ -630,7 +630,7 @@ export const DashboardView: React.FC = () => {
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
               {t('Recent Transactions & POS Orders', 'أحدث طلبات نقاط البيع')}
             </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-400 dark:text-neutral-400 mt-0.5">
               {t('Orders automatically deplete recipe raw materials in the inventory ledger', 'استهلاك المخزون المباشر عبر الوصفات')}
             </p>
           </div>
@@ -646,7 +646,7 @@ export const DashboardView: React.FC = () => {
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-neutral-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <tr className="border-b border-slate-100 dark:border-neutral-800 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
                 <th className="py-3 px-3">{t('Order ID', 'رقم الطلب')}</th>
                 <th className="py-3 px-3">{t('Customer', 'العميل')}</th>
                 <th className="py-3 px-3">{t('Brand / Unit', 'الوحدة')}</th>
@@ -672,7 +672,7 @@ export const DashboardView: React.FC = () => {
                         {order.customerName || t('Walk-in Guest', 'عميل مباشر')}
                       </span>
                       {order.tableNumber && (
-                        <span className="block text-[10px] text-slate-400 font-normal">
+                        <span className="block text-[10px] text-slate-400 dark:text-neutral-400 font-normal">
                           {order.tableNumber}
                         </span>
                       )}
@@ -710,7 +710,7 @@ export const DashboardView: React.FC = () => {
                       </span>
                     </td>
 
-                    <td className="py-3 px-3 text-right text-slate-400 font-mono text-[11px]">
+                    <td className="py-3 px-3 text-right text-slate-400 dark:text-neutral-400 font-mono text-[11px]">
                       {t('Just now', 'الآن')}
                     </td>
                   </tr>
