@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Download, Plus, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Coffee, Download, Plus, Users } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { BRANCHES } from '../../data/mockData';
 import { BranchId } from '../../types';
 import { StaffView } from './StaffView';
+import { StaffConsumptionView } from './StaffConsumptionView';
 
-type StaffTab = 'roster' | 'schedule';
+type StaffTab = 'roster' | 'schedule' | 'consumption';
 const localDateKey = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 const today = () => localDateKey(new Date());
 const dateLabel = (date: string, options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, options);
@@ -75,6 +76,7 @@ export const StaffHubView: React.FC = () => {
   const tabs: { id: StaffTab; label: string; icon: React.ElementType }[] = [
     { id: 'roster', label: t('Roster', 'قائمة الموظفين'), icon: Users },
     { id: 'schedule', label: t('Schedule', 'الجدول'), icon: CalendarDays },
+    { id: 'consumption', label: t('Staff Consumption', 'استهلاك الموظفين'), icon: Coffee },
   ];
 
   return <div className="p-6 space-y-5 max-w-7xl mx-auto">
@@ -84,6 +86,7 @@ export const StaffHubView: React.FC = () => {
     </div>
 
     {tab === 'roster' && <StaffView />}
+    {tab === 'consumption' && <StaffConsumptionView />}
 
     {tab === 'schedule' && <>
       <div className="flex flex-wrap items-center justify-between gap-3">
