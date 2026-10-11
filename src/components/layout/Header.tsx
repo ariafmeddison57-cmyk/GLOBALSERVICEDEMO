@@ -46,10 +46,14 @@ export const Header: React.FC = () => {
     orders,
     inventory,
     staff,
+    purchases,
+    inventoryTransfers,
+    damagedGoods,
     expenses,
     totalTodaySales,
     totalMonthlySales,
     totalExpenses,
+    setCurrentView,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +63,86 @@ export const Header: React.FC = () => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isDesignMenuOpen, setIsDesignMenuOpen] = useState(false);
   const [exportedReportName, setExportedReportName] = useState('');
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dateKey = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const daysUntil = (value: string) => {
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
+  };
+  const notifications: { id: string; title: string; detail: string; destination: 'inventory' | 'purchases' | 'staff' | 'expenses'; level: 'urgent' | 'warning' | 'info' }[] = [];
+
+  inventory.forEach((item) => {
+    const branchName = BRANCHES.find((branch) => branch.id === item.location)?.name || item.location;
+    if (item.closingStock <= item.minReorderLevel) {
+      notifications.push({
+        id: `stock-${item.id}`,
+        title: t('Low stock', 'مخزون منخفض') + ` · ${language === 'ar' ? item.nameAr : item.name}`,
+        detail: `${item.closingStock} ${item.unit} ${t('remaining at', 'متبقي في')} ${branchName} · ${t('reorder at', 'حد الطلب')} ${item.minReorderLevel}`,
+        destination: 'inventory',
+        level: item.closingStock <= 0 ? 'urgent' : 'warning',
+      });
+    }
+    const expiryDays = daysUntil(item.expiryDate);
+    if (expiryDays !== null && expiryDays <= 30) {
+      notifications.push({
+        id: `expiry-${item.id}`,
+        title: expiryDays < 0 ? t('Stock batch expired', 'انتهت صلاحية دفعة مخزون') : t('Stock batch expiring soon', 'دفعة مخزون قاربت على الانتهاء'),
+        detail: `${language === 'ar' ? item.nameAr : item.name} · ${expiryDays < 0 ? `${Math.abs(expiryDays)} ${t('days overdue', 'يوم منذ الانتهاء')}` : `${t('expires in', 'تنتهي خلال')} ${expiryDays} ${t('days', 'يوم')}`} · ${branchName}`,
+        destination: 'inventory',
+        level: expiryDays < 0 ? 'urgent' : 'warning',
+      });
+    }
+  });
+
+  staff.forEach((person) => {
+    const expiringDocs = [
+      { label: t('Qatar ID', 'البطاقة الشخصية'), date: person.qidExpiry },
+      { label: t('food handling certificate', 'شهادة تداول الأغذية'), date: person.foodHandlingExpiry },
+    ].flatMap((doc) => {
+      const days = daysUntil(doc.date);
+      return days !== null && days <= 30 ? [{ ...doc, days }] : [];
+    });
+    if (expiringDocs.length) {
+      const details = expiringDocs.map((doc) => `${doc.label}: ${doc.days < 0 ? t('expired', 'منتهية') : `${t('expires in', 'تنتهي خلال')} ${doc.days} ${t('days', 'يوم')}`}`).join(' · ');
+      notifications.push({
+        id: `staff-doc-${person.id}`,
+        title: `${t('Staff document needs attention', 'مستند موظف يحتاج إلى متابعة')} · ${language === 'ar' ? person.nameAr : person.name}`,
+        detail: details,
+        destination: 'staff',
+        level: expiringDocs.some((doc) => doc.days < 0) ? 'urgent' : 'warning',
+      });
+    }
+  });
+
+  purchases.forEach((purchase) => {
+    const branchName = BRANCHES.find((branch) => branch.id === purchase.branchDestination)?.name || purchase.branchDestination;
+    if (purchase.status === 'Pending Approval') {
+      notifications.push({ id: `purchase-approval-${purchase.id}`, title: t('Purchase order needs approval', 'طلب شراء بانتظار الاعتماد'), detail: `${purchase.id} · ${purchase.supplier} · ${branchName}`, destination: 'purchases', level: 'warning' });
+    } else if (purchase.status === 'Ordered') {
+      const dueDays = daysUntil(purchase.expectedDelivery);
+      if (dueDays !== null && dueDays <= 0) {
+        notifications.push({ id: `purchase-overdue-${purchase.id}`, title: t('Purchase delivery is due', 'موعد استلام طلب الشراء'), detail: `${purchase.id} · ${purchase.supplier} · ${dueDays < 0 ? t('overdue', 'متأخر') : t('due today', 'مستحق اليوم')} · ${branchName}`, destination: 'purchases', level: dueDays < 0 ? 'urgent' : 'info' });
+      }
+    }
+  });
+
+  inventoryTransfers.filter((transfer) => transfer.status === 'In Transit').forEach((transfer) => {
+    const destination = BRANCHES.find((branch) => branch.id === transfer.destinationBranchId)?.name || transfer.destinationBranchId;
+    notifications.push({ id: `transfer-${transfer.id}`, title: t('Stock transfer awaiting receipt', 'تحويل مخزون بانتظار الاستلام'), detail: `${transfer.quantity} ${transfer.unit} ${transfer.itemName} · ${destination}`, destination: 'inventory', level: 'info' });
+  });
+
+  const recentWaste = damagedGoods.filter((record) => {
+    const days = daysUntil(record.date);
+    return days !== null && days >= -7 && days <= 0;
+  });
+  recentWaste.slice(0, 5).forEach((record) => {
+    notifications.push({ id: `waste-${record.id}`, title: t('Waste recorded', 'تم تسجيل هدر'), detail: `${record.itemName} · ${record.quantity} ${record.unit} · ${formatCurrency(record.totalFinancialLoss)}`, destination: 'inventory', level: 'info' });
+  });
+
+  const notificationPriority = { urgent: 0, warning: 1, info: 2 };
+  notifications.sort((a, b) => notificationPriority[a.level] - notificationPriority[b.level] || a.title.localeCompare(b.title));
 
   const designOptions = [
     { id: 'grove' as const, name: t('Grove', 'الحديقة'), note: t('Forest & brass', 'أخضر ونحاسي'), colors: ['#17352c', '#e6c18f', '#f5f6f3'] },
@@ -281,29 +365,37 @@ export const Header: React.FC = () => {
           <button
             onClick={() => setIsNotificationOpen(!isNotificationOpen)}
             className="p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors relative"
-            title="Notifications"
+            title={t('Notifications', 'الإشعارات')}
+            aria-label={`${t('Notifications', 'الإشعارات')}${notifications.length ? `, ${notifications.length}` : ''}`}
+            aria-expanded={isNotificationOpen}
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-neutral-900" />
+            {notifications.length > 0 && <span className="absolute -top-0.5 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-neutral-900">{notifications.length > 99 ? '99+' : notifications.length}</span>}
           </button>
 
           {isNotificationOpen && (
-            <div className="absolute right-0 mt-2 w-80 p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-xl z-50">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-neutral-800">
-                <span className="text-xs font-bold text-slate-900 dark:text-neutral-100">
-                  {t('Live Activity Alerts', 'تنبيهات العمليات المباشرة')}
-                </span>
-                <span className="text-[10px] text-blue-600 font-semibold">{t('3 New', '٣ جديدة')}</span>
+            <div className="absolute right-0 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-xl z-50 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 dark:border-neutral-800 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-neutral-100">{t('Notifications', 'الإشعارات')}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-neutral-400 mt-0.5">{t('Items that need attention', 'أمور تحتاج إلى متابعة')}</p>
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-neutral-400">{notifications.length} {t('active', 'نشطة')}</span>
               </div>
-              <div className="mt-2 space-y-2 text-xs">
-                <div className="p-2 rounded-xl bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-neutral-200">
-                  <p className="font-semibold">{t('Recipe Stock Depleted', 'تم خصم كمية المكونات')}</p>
-                  <p className="text-[11px] opacity-80">{t('Order #1042 deducted 36g beans & 400ml milk', 'الطلب #١٠٤٢ خصم ٣٦جم بن و ٤٠٠ مل حليب')}</p>
-                </div>
-                <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200">
-                  <p className="font-semibold">{t('Damaged Stock Logged', 'تم تسجيل إتلاف بضاعة')}</p>
-                  <p className="text-[11px] opacity-80">{t('12L Baladna Milk written off (-QAR 78.00)', 'تم شطب ١٢ لتر حليب تالف (-٧٨ ر.ق)')}</p>
-                </div>
+              <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-2">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <CheckCircle2 className="w-7 h-7 mx-auto text-emerald-500 mb-2" />
+                    <p className="text-xs font-semibold text-slate-800 dark:text-neutral-100">{t('You’re all caught up', 'لا توجد تنبيهات حالية')}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-neutral-400 mt-1">{t('No urgent stock, staff, or purchasing items right now.', 'لا توجد أمور عاجلة للمخزون أو الموظفين أو المشتريات الآن.')}</p>
+                  </div>
+                ) : notifications.map((notification) => (
+                  <button key={notification.id} onClick={() => { setCurrentView(notification.destination); setIsNotificationOpen(false); }} className={`w-full text-left p-3 mb-1 rounded-xl border transition-colors ${notification.level === 'urgent' ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-950/50' : notification.level === 'warning' ? 'bg-amber-50 dark:bg-amber-950/25 border-amber-200 dark:border-amber-900/50 hover:bg-amber-100 dark:hover:bg-amber-950/40' : 'bg-slate-50 dark:bg-neutral-800/70 border-slate-100 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-800'}`}>
+                    <span className={`block text-xs font-bold ${notification.level === 'urgent' ? 'text-rose-800 dark:text-rose-200' : notification.level === 'warning' ? 'text-amber-900 dark:text-amber-200' : 'text-slate-800 dark:text-neutral-100'}`}>{notification.title}</span>
+                    <span className="block text-[11px] text-slate-600 dark:text-neutral-300 mt-1 leading-relaxed">{notification.detail}</span>
+                    <span className="block text-[9px] uppercase font-bold tracking-wide text-slate-400 dark:text-neutral-500 mt-2">{t('Open section', 'فتح القسم')} →</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
